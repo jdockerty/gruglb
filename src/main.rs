@@ -1,18 +1,28 @@
-use std::io;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
+use std::io::prelude::*;
+use std::net::TcpListener;
+use std::{io, thread};
 
-#[tokio::main]
-async fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:9091").await?;
+fn main() -> io::Result<()> {
+    let bind_addrs = vec!["9091", "9092"];
 
-    loop {
-        match listener.accept().await {
-            Ok((mut socket, addr)) => {
-                println!("New connection {}", addr);
-                socket.write_all(b"OK!").await?;
-            }
-            Err(e) => eprintln!("Couldn't get client: {}", e),
-        }
+    let mut listeners = Vec::new();
+
+    for b in bind_addrs {
+        let addr = &format!("127.0.0.1:{}", b);
+        let listener = TcpListener::bind(addr).unwrap();
+        println!("Listening on {}", addr);
+        listeners.push(listener);
     }
+
+    for l in listeners {
+        thread::spawn(move || {
+            for stream in l.incoming() {
+                let stream = stream.unwrap();
+                println!("{:?}", stream.local_addr());
+            }
+        });
+    }
+
+    thread::park();
+    Ok(())
 }
