@@ -1,29 +1,17 @@
+mod config;
+
+use rand::prelude::*;
 use serde_json::json;
 use std::net::{TcpListener, TcpStream};
 use std::thread;
-
-use rand::prelude::*;
 
 fn work(name: &str, stream: TcpStream) {
     println!("{name} starting work");
     let res = json!({"status": "OK"});
     thread::sleep(std::time::Duration::from_secs(5));
-    serde_json::to_writer(stream, &res);
+    let _ = serde_json::to_writer(stream, &res);
     println!("{name} done!");
 }
-
-//fn handle_client(mut stream: TcpStream, backend_addr: &str) {
-//    let mut backend_stream = TcpStream::connect(backend_addr).unwrap();
-//
-//    let mut buffer = [0; 512];
-//    loop {
-//        let nbytes = stream.read(&mut buffer).unwrap();
-//        if nbytes == 0 {
-//            break;
-//        }
-//        backend_stream.write(&buffer[..nbytes]).unwrap();
-//    }
-//}
 
 fn main() {
     let ports = vec!["9091", "9092"];
