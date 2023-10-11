@@ -32,11 +32,11 @@ fn main() -> Result<()> {
 
     let conf = config::new(config_file)?;
 
-    if let Some(ports) = conf.ports() {
-        for port in ports {
-            let addr = format!("{}:{}", conf.address, port);
+    if let Some(targets) = &conf.targets {
+        for (name, target) in targets {
+            let addr = format!("{}:{}", conf.address, target.listener);
             let listener = TcpListener::bind(&addr).unwrap();
-            println!("Listening on {}", addr);
+            println!("Listening on {} for {name}", addr);
 
             // Listen to incoming traffic on separate threads
             thread::spawn(move || {

@@ -25,17 +25,17 @@ fn default_address() -> String {
 // traffic to configured backend servers.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Target {
-    listener: u16,
-    backends: Option<Vec<Backend>>,
+    pub listener: u16,
+    pub backends: Option<Vec<Backend>>,
     // routing_algorithm: RoutingAlgorithm,
 }
 
 // An instance for a backend server that will have traffic routed to.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Backend {
-    host: String,
-    port: String,
-    healthcheck_path: String,
+    pub host: String,
+    pub port: String,
+    pub healthcheck_path: String,
     // healthcheck_interval: <type>
 }
 
