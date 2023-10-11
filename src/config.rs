@@ -54,7 +54,7 @@ impl Config {
     pub fn ports(&self) -> Option<Vec<u16>> {
         if let Some(targets) = &self.targets {
             let mut ports = vec![];
-            for t in targets {
+            for (_, t) in targets {
                 ports.push(t.listener);
             }
             ports.sort();
@@ -63,7 +63,21 @@ impl Config {
             None
         }
     }
+
+    /// Retrieve a list of names given to targets.
+    pub fn target_names(&self) -> Option<Vec<String>> {
+        if let Some(targets) = &self.targets {
+            let mut names = vec![];
+            for (name, _) in targets {
+                names.push(name.to_string());
+            }
+            Some(names)
+        } else {
+            None
+        }
+    }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,6 +91,19 @@ mod tests {
         let expected_ports: Vec<u16> = vec![9090, 9091];
         let actual_ports = conf.ports().unwrap();
 
-        assert_eq!(expected_ports, actual_ports);
+        assert_eq!(actual_ports, expected_ports);
+    }
+
+    #[test]
+    fn named_targets_match() {
+        let test_config = File::open("tests/fixtures/example-config.yaml").unwrap();
+
+        let conf = new(test_config).unwrap();
+
+        let names = conf.target_names().unwrap();
+
+        assert_eq!(names.len(), 2);
+        assert!(names.iter().any(|elem| elem == "webServersA"));
+        assert!(names.iter().any(|elem| elem == "webServersB"));
     }
 }
