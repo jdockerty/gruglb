@@ -1,13 +1,24 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
-use std::fs::File;
+use std::{collections::HashMap, fs::File};
 
 // Represents the load balancer configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    // The configured targets by the user.
-    pub targets: Option<Vec<Target>>,
+    /// Binding address of the application, defaults to 127.0.0.1 if not set.
+    #[serde(default = "default_address")]
+    pub address: String,
+
+    /// The configured targets by the user.
+    /// The key of the HashMap structure is a simple convenience label for
+    /// configuration and access.
+    pub targets: Option<HashMap<String, Target>>,
+}
+
+/// Default for the address binding of the application when not set.
+fn default_address() -> String {
+    "127.0.0.1".to_string()
 }
 
 // A target encapsulates a port that the load balancer listens on for forwarding
