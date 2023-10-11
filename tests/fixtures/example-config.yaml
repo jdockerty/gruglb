@@ -1,3 +1,5 @@
 targets:
-  - listener: 9091
-  - listener: 9090
+  webServersA:
+    listener: 9090
+  webServersB:
+    listener: 9091
