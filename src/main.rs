@@ -33,10 +33,13 @@ fn main() {
         let listener = TcpListener::bind(&addr).unwrap();
         println!("Listening on {}", addr);
 
+        // Listen to incoming traffic on separate threads
         thread::spawn(move || {
             for stream in listener.incoming() {
                 match stream {
                     Ok(stream) => {
+                        // Pass the TCP streams over to separate threads to avoid
+                        // blocking.
                         thread::spawn(move || {
                             let mut rng = thread_rng();
                             let n: u32 = rng.gen();
