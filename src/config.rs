@@ -36,7 +36,7 @@ pub struct Backend {
     host: String,
     port: String,
     healthcheck_path: String,
-    // healthCheckInterval: <type>
+    // healthcheck_interval: <type>
 }
 
 // Choice of a variety of routing algorithms.
