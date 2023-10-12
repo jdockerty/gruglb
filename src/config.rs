@@ -7,10 +7,11 @@ use tracing_subscriber::filter::LevelFilter;
 // Represents the load balancer configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Binding address of the application, defaults to 127.0.0.1 if not set.
+    /// Bind address of the application, defaults to 127.0.0.1 if not set.
     #[serde(default = "default_address")]
     pub address: String,
 
+    /// Log level of the application, defaults to INFO.
     #[serde(default = "default_logging")]
     pub logging: String,
 
@@ -90,7 +91,7 @@ impl Config {
         match self.logging.to_uppercase().as_str() {
             "TRACE" => LevelFilter::TRACE,
             "DEBUG" => LevelFilter::DEBUG,
-            _ => LevelFilter::INFO
+            _ => LevelFilter::INFO,
         }
     }
 }
