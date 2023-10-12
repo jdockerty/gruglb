@@ -2,12 +2,16 @@ mod config;
 
 use anyhow::Result;
 use clap::Parser;
+use clap_verbosity_flag::{InfoLevel, Verbosity};
 use rand::prelude::*;
 use serde_json::json;
 use std::fs::File;
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::thread;
+use tracing::{debug, error, info};
+use tracing_log::AsTrace;
+use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -15,6 +19,9 @@ struct Cli {
     /// Path to the gruglb config file.
     #[arg(short, long)]
     config: PathBuf,
+
+    #[command(flatten)]
+    verbose: Verbosity<clap_verbosity_flag::InfoLevel>,
 }
 
 fn work(name: &str, stream: TcpStream) {
@@ -27,16 +34,21 @@ fn work(name: &str, stream: TcpStream) {
 
 fn main() -> Result<()> {
     let args = Cli::parse();
-
     let config_file = File::open(args.config)?;
+    let _ = FmtSubscriber::builder()
+        .with_max_level(args.verbose.log_level_filter().as_trace())
+        .init();
 
     let conf = config::new(config_file)?;
 
     if let Some(targets) = &conf.targets {
+        if let Some(target_names) = conf.target_names() {
+            debug!("All loaded targets {:?}", target_names);
+        }
         for (name, target) in targets {
             let addr = format!("{}:{}", conf.address, target.listener);
             let listener = TcpListener::bind(&addr).unwrap();
-            println!("Listening on {} for {name}", addr);
+            info!("Listening on {} for {name}", addr);
 
             // Listen to incoming traffic on separate threads
             thread::spawn(move || {
@@ -53,14 +65,14 @@ fn main() -> Result<()> {
                             });
                         }
                         Err(e) => {
-                            eprintln!("Unable to connect: {}", e);
+                            error!("Unable to connect: {}", e);
                         }
                     }
                 }
             });
         }
     } else {
-        eprintln!("No listeners configured, nothing to do.");
+        info!("No listeners configured, nothing to do.");
         return Ok(());
     }
 
