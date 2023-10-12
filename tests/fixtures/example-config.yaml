@@ -1,9 +1,10 @@
+logging: debug
 targets:
   9090:
     name: webServersA
     backends:
-      - host: http://localhost
-        port: 8080
-        healthcheck_path: /fake
+      - host: "127.0.0.1" 
+        port: 8090
+        healthcheck_path: /hello
   9091:
     name: webServersB
