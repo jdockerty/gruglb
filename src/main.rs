@@ -1,60 +1,78 @@
-use serde_json::json;
-use std::net::{TcpListener, TcpStream};
-use std::thread;
+mod config;
 
+use anyhow::Result;
+use clap::Parser;
 use rand::prelude::*;
+use serde_json::json;
+use std::fs::File;
+use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
+use std::thread;
+use tracing::{debug, error, info};
+use tracing_log::AsTrace;
+use tracing_subscriber::FmtSubscriber;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+struct Cli {
+    /// Path to the gruglb config file.
+    #[arg(short, long)]
+    config: PathBuf,
+}
 
 fn work(name: &str, stream: TcpStream) {
     println!("{name} starting work");
     let res = json!({"status": "OK"});
     thread::sleep(std::time::Duration::from_secs(5));
-    serde_json::to_writer(stream, &res);
+    let _ = serde_json::to_writer(stream, &res);
     println!("{name} done!");
 }
 
-//fn handle_client(mut stream: TcpStream, backend_addr: &str) {
-//    let mut backend_stream = TcpStream::connect(backend_addr).unwrap();
-//
-//    let mut buffer = [0; 512];
-//    loop {
-//        let nbytes = stream.read(&mut buffer).unwrap();
-//        if nbytes == 0 {
-//            break;
-//        }
-//        backend_stream.write(&buffer[..nbytes]).unwrap();
-//    }
-//}
+fn main() -> Result<()> {
+    let args = Cli::parse();
+    let config_file = File::open(args.config)?;
+    let conf = config::new(config_file)?;
 
-fn main() {
-    let ports = vec!["9091", "9092"];
+    let _ = FmtSubscriber::builder()
+        .with_max_level(conf.log_level())
+        .init();
 
-    for port in ports {
-        let addr = format!("127.0.0.1:{}", port);
-        let listener = TcpListener::bind(&addr).unwrap();
-        println!("Listening on {}", addr);
+    if let Some(targets) = &conf.targets {
+        if let Some(target_names) = conf.target_names() {
+            debug!("All loaded targets {:?}", target_names);
+        }
+        for (name, target) in targets {
+            let addr = format!("{}:{}", conf.address, target.listener);
+            let listener = TcpListener::bind(&addr).unwrap();
+            info!("Listening on {} for {name}", addr);
 
-        // Listen to incoming traffic on separate threads
-        thread::spawn(move || {
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(stream) => {
-                        // Pass the TCP streams over to separate threads to avoid
-                        // blocking.
-                        thread::spawn(move || {
-                            let mut rng = thread_rng();
-                            let n: u32 = rng.gen();
-                            let name = &format!("thread-{}", n);
-                            work(name, stream);
-                        });
-                    }
-                    Err(e) => {
-                        eprintln!("Unable to connect: {}", e);
+            // Listen to incoming traffic on separate threads
+            thread::spawn(move || {
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(stream) => {
+                            // Pass the TCP streams over to separate threads to avoid
+                            // blocking.
+                            thread::spawn(move || {
+                                let mut rng = thread_rng();
+                                let n: u32 = rng.gen();
+                                let name = &format!("thread-{}", n);
+                                work(name, stream);
+                            });
+                        }
+                        Err(e) => {
+                            error!("Unable to connect: {}", e);
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
+    } else {
+        info!("No listeners configured, nothing to do.");
+        return Ok(());
     }
 
     // Sleep main thread so spawned threads can run
     thread::park();
+    Ok(())
 }
