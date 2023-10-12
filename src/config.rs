@@ -16,9 +16,9 @@ pub struct Config {
     pub logging: String,
 
     /// The configured targets by the user.
-    /// The key of the HashMap structure is a simple convenience label for
-    /// configuration and access.
-    pub targets: Option<HashMap<String, Target>>,
+    /// This provides a mapping between a listener port and its
+    /// configured targets.
+    pub targets: Option<HashMap<u16, Target>>,
 }
 
 /// Default for the address binding of the application when not set.
@@ -35,7 +35,10 @@ fn default_logging() -> String {
 // traffic to configured backend servers.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Target {
-    pub listener: u16,
+    /// Convenient label for the backends.
+    pub name: String,
+
+    /// Backends to route traffic to.
     pub backends: Option<Vec<Backend>>,
     // routing_algorithm: RoutingAlgorithm,
 }
@@ -44,7 +47,7 @@ pub struct Target {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Backend {
     pub host: String,
-    pub port: String,
+    pub port: u16,
     pub healthcheck_path: String,
     // healthcheck_interval: <type>
 }
@@ -64,8 +67,8 @@ impl Config {
     pub fn ports(&self) -> Option<Vec<u16>> {
         if let Some(targets) = &self.targets {
             let mut ports = vec![];
-            for (_, t) in targets {
-                ports.push(t.listener);
+            for (listener, _) in targets {
+                ports.push(*listener);
             }
             ports.sort();
             Some(ports)
@@ -78,8 +81,8 @@ impl Config {
     pub fn target_names(&self) -> Option<Vec<String>> {
         if let Some(targets) = &self.targets {
             let mut names = vec![];
-            for (name, _) in targets {
-                names.push(name.to_string());
+            for (_, target) in targets {
+                names.push(target.name.clone());
             }
             Some(names)
         } else {

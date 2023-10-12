@@ -1,5 +1,9 @@
 targets:
-  webServersA:
-    listener: 9090
-  webServersB:
-    listener: 9091
+  9090:
+    name: webServersA
+    backends:
+      - host: http://localhost
+        port: 8080
+        healthcheck_path: /fake
+  9091:
+    name: webServersB
