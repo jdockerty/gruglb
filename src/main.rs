@@ -2,7 +2,6 @@ mod config;
 
 use anyhow::Result;
 use clap::Parser;
-use clap_verbosity_flag::{InfoLevel, Verbosity};
 use rand::prelude::*;
 use serde_json::json;
 use std::fs::File;
@@ -19,9 +18,6 @@ struct Cli {
     /// Path to the gruglb config file.
     #[arg(short, long)]
     config: PathBuf,
-
-    #[command(flatten)]
-    verbose: Verbosity<clap_verbosity_flag::InfoLevel>,
 }
 
 fn work(name: &str, stream: TcpStream) {
@@ -35,11 +31,11 @@ fn work(name: &str, stream: TcpStream) {
 fn main() -> Result<()> {
     let args = Cli::parse();
     let config_file = File::open(args.config)?;
-    let _ = FmtSubscriber::builder()
-        .with_max_level(args.verbose.log_level_filter().as_trace())
-        .init();
-
     let conf = config::new(config_file)?;
+
+    let _ = FmtSubscriber::builder()
+        .with_max_level(conf.log_level())
+        .init();
 
     if let Some(targets) = &conf.targets {
         if let Some(target_names) = conf.target_names() {

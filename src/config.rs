@@ -2,6 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::{collections::HashMap, fs::File};
+use tracing_subscriber::filter::LevelFilter;
 
 // Represents the load balancer configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -9,6 +10,9 @@ pub struct Config {
     /// Binding address of the application, defaults to 127.0.0.1 if not set.
     #[serde(default = "default_address")]
     pub address: String,
+
+    #[serde(default = "default_logging")]
+    pub logging: String,
 
     /// The configured targets by the user.
     /// The key of the HashMap structure is a simple convenience label for
@@ -19,6 +23,11 @@ pub struct Config {
 /// Default for the address binding of the application when not set.
 fn default_address() -> String {
     "127.0.0.1".to_string()
+}
+
+/// Default log level of the application when not set.
+fn default_logging() -> String {
+    "INFO".to_string()
 }
 
 // A target encapsulates a port that the load balancer listens on for forwarding
@@ -74,6 +83,14 @@ impl Config {
             Some(names)
         } else {
             None
+        }
+    }
+
+    pub fn log_level(&self) -> LevelFilter {
+        match self.logging.to_uppercase().as_str() {
+            "TRACE" => LevelFilter::TRACE,
+            "DEBUG" => LevelFilter::DEBUG,
+            _ => LevelFilter::INFO
         }
     }
 }

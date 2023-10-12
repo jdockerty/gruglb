@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 clap = { version = "4.4.6", features = ["derive", "env"] }
-clap-verbosity-flag = "2.0.1"
 log = "0.4.20"
 rand = "0.8.5"
 serde = { version = "1.0.188", features = ["derive"] }
