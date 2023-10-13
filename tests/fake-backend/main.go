@@ -27,7 +27,7 @@ func main() {
 			log.Fatal(err)
 		}
 		defer conn.Close()
-		fmt.Println("Accepted conn from", conn.RemoteAddr())
+		log.Println("Accepted conn from", conn.RemoteAddr())
 
 		go func(c net.Conn) {
 			msg := fmt.Sprintf("Hello from backend server %s", id)

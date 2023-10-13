@@ -39,6 +39,7 @@ fn proxy(conf: &config::Config, mut stream: TcpStream) {
                     response.read_to_end(&mut buffer).unwrap();
                     stream.write_all(&buffer).unwrap();
                     stream.shutdown(Shutdown::Both).unwrap();
+                    debug!("TCP stream closed");
                 }
                 Err(e) => eprintln!("{e}"),
             };
