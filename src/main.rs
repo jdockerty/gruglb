@@ -37,7 +37,7 @@ fn proxy(conf: &config::Config, mut stream: TcpStream) {
                 Ok(mut response) => {
                     let mut buffer = Vec::new();
                     response.read_to_end(&mut buffer).unwrap();
-                    stream.write(&buffer).unwrap();
+                    stream.write_all(&buffer).unwrap();
                     stream.shutdown(Shutdown::Both).unwrap();
                 }
                 Err(e) => eprintln!("{e}"),
