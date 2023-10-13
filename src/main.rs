@@ -1,11 +1,11 @@
 mod config;
+mod proxy;
 
 use anyhow::Result;
 use clap::Parser;
-use serde_json::json;
 use std::fs::File;
-use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::TcpListener;
+use std::sync::{Arc, Mutex};
 
 use std::path::PathBuf;
 use std::thread;
@@ -20,48 +20,12 @@ struct Cli {
     config: PathBuf,
 }
 
-fn proxy(conf: &config::Config, mut stream: TcpStream) {
-    stream.set_nonblocking(true).unwrap();
-    let request_port = stream.local_addr().unwrap().port();
-    info!("Incoming request on {}", &request_port);
-
-    if let Some(targets) = &conf.targets {
-        if let Some(target) = targets.get(&request_port) {
-            let backend = &target.backends.clone().unwrap()[0];
-            debug!("Retrieved backend {:?}", &backend);
-
-            let backend_addr = format!("{}:{}", backend.host, backend.port);
-            debug!("Attempting to connect to {}", &backend_addr);
-
-            match TcpStream::connect(backend_addr) {
-                Ok(mut response) => {
-                    let mut buffer = Vec::new();
-                    response.read_to_end(&mut buffer).unwrap();
-                    stream.write_all(&buffer).unwrap();
-                    stream.shutdown(Shutdown::Both).unwrap();
-                    debug!("TCP stream closed");
-                }
-                Err(e) => eprintln!("{e}"),
-            };
-        } else {
-            info!("No backend configured for {}", &request_port);
-        };
-    };
-}
-
-fn work(name: &str, stream: TcpStream) {
-    println!("{name} starting work");
-    let res = json!({"status": "OK"});
-    thread::sleep(std::time::Duration::from_secs(5));
-    let _ = serde_json::to_writer(stream, &res);
-    println!("{name} done!");
-}
-
 fn main() -> Result<()> {
     let args = Cli::parse();
     let config_file = File::open(args.config)?;
-    let conf = config::new(config_file)?;
+    let conf = Box::new(config::new(config_file)?);
     let listen_addr = conf.address.clone();
+    let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
     FmtSubscriber::builder()
         .with_max_level(conf.log_level())
@@ -77,7 +41,6 @@ fn main() -> Result<()> {
             let listener = TcpListener::bind(&addr)?;
             info!("Listening on {} for {}", &addr, &target.name);
 
-            let conf = conf.clone();
             // Listen to incoming traffic on separate threads
             thread::spawn(move || {
                 for stream in listener.incoming() {
@@ -85,9 +48,8 @@ fn main() -> Result<()> {
                         Ok(stream) => {
                             // Pass the TCP streams over to separate threads to avoid
                             // blocking and give each thread its copy of the configuration.
-                            let conf = conf.clone();
                             thread::spawn(move || {
-                                proxy(&conf, stream);
+                                proxy::tcp_connection(conf, idx, stream);
                             });
                         }
                         Err(e) => {
