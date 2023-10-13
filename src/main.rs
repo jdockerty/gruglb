@@ -6,7 +6,7 @@ use serde_json::json;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
-use std::os::fd::AsFd;
+
 use std::path::PathBuf;
 use std::thread;
 use tracing::{debug, error, info};
@@ -62,7 +62,7 @@ fn main() -> Result<()> {
     let conf = config::new(config_file)?;
     let listen_addr = conf.address.clone();
 
-    let _ = FmtSubscriber::builder()
+    FmtSubscriber::builder()
         .with_max_level(conf.log_level())
         .init();
 

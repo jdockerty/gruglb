@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_yaml;
+
 use std::{collections::HashMap, fs::File};
 use tracing_subscriber::filter::LevelFilter;
 
@@ -67,7 +67,7 @@ impl Config {
     pub fn ports(&self) -> Option<Vec<u16>> {
         if let Some(targets) = &self.targets {
             let mut ports = vec![];
-            for (listener, _) in targets {
+            for listener in targets.keys() {
                 ports.push(*listener);
             }
             ports.sort();
@@ -81,7 +81,7 @@ impl Config {
     pub fn target_names(&self) -> Option<Vec<String>> {
         if let Some(targets) = &self.targets {
             let mut names = vec![];
-            for (_, target) in targets {
+            for target in targets.values() {
                 names.push(target.name.clone());
             }
             Some(names)
