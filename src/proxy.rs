@@ -13,27 +13,28 @@ pub fn tcp_connection(conf: Box<Config>, routing_idx: Arc<Mutex<usize>>, mut str
 
     // We can unwrap here because we have already checked for the existence of targets.
     let targets = conf.targets.unwrap();
-    let target_count = targets.len();
 
     if let Some(target) = targets.get(&request_port) {
-        let mut backends = target.backends.unwrap();
-        debug!("Retrieved backend {:?}", &backends);
+        let backends = target.backends.clone().unwrap();
+        let backend_count = backends.len();
 
-        let mut index = match routing_idx.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                eprintln!("Unable to acquire lock: {poisoned}");
-                poisoned.into_inner()
-            }
+        let mut idx = match routing_idx.lock() {
+            Ok(idx) => idx,
+            Err(poisoned) => poisoned.into_inner(),
         };
 
-        if *index >= target_count {
-            *index = 0;
+        debug!("{backend_count} for {}, current index {idx}", &request_port);
+        debug!("Backends configured {:?}", &backends);
+
+        // Reset index when out of bounds to route back to the first server.
+        if *idx >= backend_count {
+            *idx = 0;
         }
 
-        let backend_addr = format!("{}:{}", backend.host, backend.port);
-        debug!("Attempting to connect to {}", &backend_addr);
+        let backend_addr = format!("{}:{}", backends[*idx].host, backends[*idx].port);
+        *idx += 1;
 
+        debug!("Attempting to connect to {}", &backend_addr);
         match TcpStream::connect(backend_addr) {
             Ok(mut response) => {
                 let mut buffer = Vec::new();

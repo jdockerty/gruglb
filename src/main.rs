@@ -42,15 +42,17 @@ fn main() -> Result<()> {
             info!("Listening on {} for {}", &addr, &target.name);
 
             // Listen to incoming traffic on separate threads
+            let conf = conf.clone();
+            let idx = idx.clone();
             thread::spawn(move || {
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
+                            let conf = conf.clone();
+                            let idx = idx.clone();
                             // Pass the TCP streams over to separate threads to avoid
                             // blocking and give each thread its copy of the configuration.
-                            thread::spawn(move || {
-                                proxy::tcp_connection(conf, idx, stream);
-                            });
+                            thread::spawn(move || proxy::tcp_connection(conf, idx, stream));
                         }
                         Err(e) => {
                             error!("Unable to connect: {}", e);
