@@ -3,6 +3,7 @@ mod proxy;
 
 use anyhow::Result;
 use clap::Parser;
+use proxy::health_check;
 use std::fs::File;
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
@@ -35,6 +36,10 @@ fn main() -> Result<()> {
         if let Some(target_names) = conf.target_names() {
             debug!("All loaded targets {:?}", target_names);
         }
+
+        // Provides the health check thread with its own configuration.
+        let health_check_conf = conf.clone();
+        thread::spawn(move || proxy::health_check(health_check_conf));
 
         for (listener, target) in targets.clone() {
             let addr = format!("{}:{}", listen_addr.clone(), listener);

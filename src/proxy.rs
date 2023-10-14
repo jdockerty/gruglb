@@ -1,10 +1,52 @@
 use crate::config::Config;
+use reqwest;
 use std::{
     io::{Read, Write},
     net::{Shutdown, TcpStream},
     sync::{Arc, Mutex},
+    thread,
+    time::Duration,
 };
-use tracing::{debug, info};
+use tracing::{debug, error, info};
+
+/// Run health checks against configured targets.
+pub fn health_check(conf: Box<Config>) {
+    let duration = Duration::from_secs(1);
+
+    if let Some(targets) = &conf.targets {
+        loop {
+            thread::sleep(duration);
+            for target in targets.values() {
+                if let Some(backends) = &target.backends {
+                    for backend in backends {
+                        let request_addr = &format!(
+                            "{}:{}{}",
+                            backend.host, backend.port, backend.healthcheck_path
+                        );
+                        // Simple blocking call to avoid async functions leaking everywhere.
+                        match reqwest::blocking::get(request_addr) {
+                            Ok(response) => {
+                                if response.status().is_success()
+                                    || response.status().is_redirection()
+                                {
+                                    continue;
+                                }
+
+                                let status_code = response.status();
+                                info!("{} has unhealthy backend {} ({status_code}), removing from pool", target.name, request_addr);
+                            }
+                            Err(err) => error!("Unable to perform health check: {err}"),
+                        }
+                    }
+                } else {
+                    info!("No backends to health check for {}", target.name);
+                }
+            }
+        }
+    } else {
+        info!("No targets configured, unable to health check.");
+    }
+}
 
 // Proxy a TCP connection to a range of configured backend servers.
 pub fn tcp_connection(conf: Box<Config>, routing_idx: Arc<Mutex<usize>>, mut stream: TcpStream) {
@@ -46,7 +88,7 @@ pub fn tcp_connection(conf: Box<Config>, routing_idx: Arc<Mutex<usize>>, mut str
                 stream.shutdown(Shutdown::Both).unwrap();
                 debug!("TCP stream closed");
             }
-            Err(e) => eprintln!("{e}"),
+            Err(e) => error!("{e}"),
         };
     } else {
         info!("No backend configured for {}", &request_port);
