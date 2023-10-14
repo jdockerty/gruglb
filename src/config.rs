@@ -52,6 +52,14 @@ pub struct Backend {
     // healthcheck_interval: <type>
 }
 
+impl PartialEq for Backend {
+    fn eq(&self, other: &Backend) -> bool {
+        self.port == other.port
+            && self.host == other.host
+            && self.healthcheck_path == other.healthcheck_path
+    }
+}
+
 // Choice of a variety of routing algorithms.
 pub enum RoutingAlgorithm {
     Simple,
