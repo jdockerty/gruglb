@@ -16,6 +16,7 @@ pub fn tcp_connection(conf: Box<Config>, routing_idx: Arc<Mutex<usize>>, mut str
 
     if let Some(target) = targets.get(&request_port) {
         let backends = target.backends.clone().unwrap();
+        debug!("Backends configured {:?}", &backends);
         let backend_count = backends.len();
 
         let mut idx = match routing_idx.lock() {
@@ -23,8 +24,10 @@ pub fn tcp_connection(conf: Box<Config>, routing_idx: Arc<Mutex<usize>>, mut str
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        debug!("{backend_count} for {}, current index {idx}", &request_port);
-        debug!("Backends configured {:?}", &backends);
+        debug!(
+            "{backend_count} backends configured for {}, current index {idx}",
+            &request_port
+        );
 
         // Reset index when out of bounds to route back to the first server.
         if *idx >= backend_count {
@@ -34,7 +37,7 @@ pub fn tcp_connection(conf: Box<Config>, routing_idx: Arc<Mutex<usize>>, mut str
         let backend_addr = format!("{}:{}", backends[*idx].host, backends[*idx].port);
         *idx += 1;
 
-        debug!("Attempting to connect to {}", &backend_addr);
+        info!("Attempting to connect to {}", &backend_addr);
         match TcpStream::connect(backend_addr) {
             Ok(mut response) => {
                 let mut buffer = Vec::new();
