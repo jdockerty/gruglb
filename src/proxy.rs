@@ -8,68 +8,93 @@ use std::{
     time::Duration,
     vec,
 };
-use tracing::{debug, error, field::debug, info};
+use tracing::{debug, error, info};
 
-// TODO: Use this for HTTP targets!
-/// Run health checks against configured HTTP targets.
-//pub fn health_check(conf: Box<Config>) {
-//    let duration = Duration::from_secs(1);
-//
-//    if let Some(targets) = &conf.targets {
-//        let mut healthy_per_target: Arc<Mutex<HashMap<String, Vec<Backend>>>> =
-//            Arc::new(Mutex::new(HashMap::new()));
-//
-//        info!("Starting health checks");
-//        loop {
-//            thread::sleep(duration);
-//            for target in targets.values() {
-//                if let Some(backends) = &target.backends {
-//                    for backend in backends {
-//                        let request_addr = &format!(
-//                            "http://{}:{}{}",
-//                            backend.host, backend.port, backend.healthcheck_path
-//                        );
-//                        // Simple blocking call to avoid async functions leaking everywhere.
-//                        match reqwest::blocking::get(request_addr) {
-//                            Ok(response) => {
-//                                if response.status().is_success()
-//                                    || response.status().is_redirection()
-//                                {
-//                                    info!("Adding healthy backend for {}", target.name);
-//
-//                                    let healthy_backends = match healthy_per_target.lock() {
-//                                        Ok(healthy_backends) => healthy_backends,
-//                                        Err(e) => {
-//                                            error!("Unable to acquire lock: {e}");
-//                                            e.into_inner()
-//                                        }
-//                                    };
-//
-//                                    add_healthy_backend(
-//                                        target.name.clone(),
-//                                        backend.clone(),
-//                                        healthy_backends.clone(),
-//                                    );
-//                                }
-//
-//                                let status_code = response.status();
-//                                info!("{} has unhealthy backend {} ({status_code}), removing from pool", target.name, request_addr);
-//                            }
-//                            Err(err) => error!("Unable to perform health check: {err}"),
-//                        }
-//                    }
-//                } else {
-//                    info!("No backends to health check for {}", target.name);
-//                }
-//            }
-//        }
-//    } else {
-//        info!("No targets configured, unable to health check.");
-//    }
-//}
+// HTTP health checks for L7 targets.
+// TODO: refactor common functionality between TCP/HTTP targets.
+pub fn http_health(conf: Box<Config>) {
+    let duration = Duration::from_secs(2);
+    let health_client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .build()
+        .unwrap();
+
+    if let Some(targets) = &conf.targets {
+        let current_healthy_targets: Arc<Mutex<HashMap<String, Vec<Backend>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        info!("Starting HTTP health checks");
+        loop {
+            debug!("Healthy HTTP {:?}", current_healthy_targets);
+            for target in targets.values() {
+                if let Some(backends) = &target.backends {
+                    for backend in backends {
+                        let health_uri = &format!(
+                            "http://{}:{}{}",
+                            backend.host, backend.port, backend.healthcheck_path
+                        );
+                        let mut healthy_targets = match current_healthy_targets.lock() {
+                            Ok(healthy_targets) => healthy_targets,
+                            Err(e) => {
+                                error!("Unable to acquire lock: {e}");
+                                e.into_inner()
+                            }
+                        };
+                        // Simple blocking call to avoid async functions leaking everywhere.
+                        match health_client.get(health_uri).send() {
+                            Ok(response) => {
+                                if response.status().is_success()
+                                    || response.status().is_redirection()
+                                {
+                                    info!("{health_uri} is healthy backend for {}", target.name);
+                                    add_backend(
+                                        target.name.clone(),
+                                        backend.clone(),
+                                        &mut healthy_targets,
+                                    );
+                                }
+
+                                if response.status().is_client_error()
+                                    || response.status().is_server_error()
+                                {
+                                    debug!(
+                                        "{} is unhealthy for {health_uri} ({}), attempting to remove",
+                                        target.name,
+                                        response.status()
+                                    );
+                                    remove_backend(
+                                        target.name.clone(),
+                                        backend.clone(),
+                                        &mut healthy_targets,
+                                    );
+                                }
+                            }
+                            Err(err) => {
+                                error!(
+                                    "Unable to health check {health_uri}, attempting to remove {}: {err}",
+                                    target.name
+                                );
+                                remove_backend(
+                                    target.name.clone(),
+                                    backend.clone(),
+                                    &mut healthy_targets,
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    info!("No backends to health check for {}", target.name);
+                }
+            }
+            thread::sleep(duration);
+        }
+    } else {
+        info!("No targets configured, unable to health check.");
+    }
+}
 
 pub fn tcp_health(conf: Box<Config>) {
-    let duration = Duration::from_secs(15);
+    let duration = Duration::from_secs(10);
 
     if let Some(targets) = &conf.targets {
         let healthy_tcp_targets: Arc<Mutex<HashMap<String, Vec<Backend>>>> =
