@@ -1,9 +1,13 @@
-use crate::config::{Backend, Config};
+use crate::{
+    config::{Backend, Config, Target},
+    TCP_HEALTHY_TARGETS,
+};
+use once_cell::sync::Lazy;
 use std::{
     collections::HashMap,
     io::{Read, Write},
     net::{Shutdown, TcpStream},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     thread,
     time::Duration,
     vec,
@@ -50,7 +54,7 @@ pub fn http_health(conf: Box<Config>) {
                                     add_backend(
                                         target.name.clone(),
                                         backend.clone(),
-                                        &mut healthy_targets,
+                                        Arc::clone(&TCP_HEALTHY_TARGETS),
                                     );
                                 }
 
@@ -65,7 +69,7 @@ pub fn http_health(conf: Box<Config>) {
                                     remove_backend(
                                         target.name.clone(),
                                         backend.clone(),
-                                        &mut healthy_targets,
+                                        Arc::clone(&TCP_HEALTHY_TARGETS),
                                     );
                                 }
                             }
@@ -77,7 +81,7 @@ pub fn http_health(conf: Box<Config>) {
                                 remove_backend(
                                     target.name.clone(),
                                     backend.clone(),
-                                    &mut healthy_targets,
+                                    Arc::clone(&TCP_HEALTHY_TARGETS),
                                 );
                             }
                         }
@@ -93,33 +97,24 @@ pub fn http_health(conf: Box<Config>) {
     }
 }
 
-pub fn tcp_health(conf: Box<Config>) {
-    let duration = Duration::from_secs(10);
+pub fn tcp_health(conf: Box<Config>, tcp_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>) {
+    let duration = Duration::from_secs(2);
 
     if let Some(targets) = &conf.targets {
-        let healthy_tcp_targets: Arc<Mutex<HashMap<String, Vec<Backend>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-
         info!("Starting TCP health checks");
         loop {
-            debug!("Healthy TCP: {:?}", healthy_tcp_targets);
+            debug!("Healthy TCP: {:?}", tcp_targets);
             for target in targets.values() {
                 if let Some(backends) = &target.backends {
                     for backend in backends {
                         let request_addr = &format!("{}:{}", backend.host, backend.port);
-                        let mut healthy_backends = match healthy_tcp_targets.lock() {
-                            Ok(healthy_backends) => healthy_backends,
-                            Err(e) => {
-                                error!("Unable to acquire lock: {e}");
-                                e.into_inner()
-                            }
-                        };
+
                         if let Ok(_) = TcpStream::connect(request_addr) {
                             info!("{request_addr} is healthy backend for {}", target.name);
                             add_backend(
                                 target.name.clone(),
                                 backend.clone(),
-                                &mut healthy_backends,
+                                Arc::clone(&TCP_HEALTHY_TARGETS),
                             );
                         } else {
                             debug!(
@@ -129,7 +124,7 @@ pub fn tcp_health(conf: Box<Config>) {
                             remove_backend(
                                 target.name.clone(),
                                 backend.clone(),
-                                &mut healthy_backends,
+                                Arc::clone(&TCP_HEALTHY_TARGETS),
                             )
                         }
                     }
@@ -145,15 +140,17 @@ pub fn tcp_health(conf: Box<Config>) {
 }
 
 // Proxy a TCP connection to a range of configured backend servers.
-pub fn tcp_connection(conf: Box<Config>, routing_idx: Arc<Mutex<usize>>, mut stream: TcpStream) {
+pub fn tcp_connection(
+    targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    target_name: String,
+    routing_idx: Arc<Mutex<usize>>,
+    mut stream: TcpStream,
+) {
     let request_port = stream.local_addr().unwrap().port();
     info!("Incoming request on {}", &request_port);
 
-    // We can unwrap here because we have already checked for the existence of targets.
-    let targets = conf.targets.unwrap();
-
-    if let Some(target) = targets.get(&request_port) {
-        let backends = target.backends.clone().unwrap();
+    if let Some(backends) = targets.read().unwrap().get(&target_name) {
+        let backends = backends.to_vec();
         debug!("Backends configured {:?}", &backends);
         let backend_count = backends.len();
 
@@ -194,9 +191,9 @@ pub fn tcp_connection(conf: Box<Config>, routing_idx: Arc<Mutex<usize>>, mut str
 fn remove_backend(
     target_name: String,
     current_backend: Backend,
-    healthy_backends: &mut HashMap<String, Vec<Backend>>,
+    healthy_backends: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
 ) {
-    if let Some(backends) = healthy_backends.get(&target_name) {
+    if let Some(backends) = healthy_backends.read().unwrap().get(&target_name) {
         if !backends.contains(&current_backend) {
             debug!("Already removed, nothing to do");
             return;
@@ -213,7 +210,10 @@ fn remove_backend(
             }
             new_backends.push(backend.clone());
         }
-        healthy_backends.insert(target_name.clone(), new_backends);
+        healthy_backends
+            .write()
+            .unwrap()
+            .insert(target_name.clone(), new_backends);
         debug!("Unhealthy backend removed.");
     }
 }
@@ -221,20 +221,27 @@ fn remove_backend(
 fn add_backend(
     target_name: String,
     current_backend: Backend,
-    healthy_backends: &mut HashMap<String, Vec<Backend>>,
+    healthy_backends: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
 ) {
-    if let Some(backends) = healthy_backends.get(&target_name) {
+    if let Some(backends) = healthy_backends.read().unwrap().get(&target_name) {
         if !backends.contains(&current_backend) {
             let mut backends = backends.to_owned();
             backends.push(current_backend.clone());
-            healthy_backends.insert(target_name, backends).unwrap();
+            healthy_backends
+                .write()
+                .unwrap()
+                .insert(target_name, backends)
+                .unwrap();
             debug!("New healthy backend added");
         } else {
             debug!("Healthy backend already known, nothing to do");
         }
     } else {
         let initial_backend = vec![current_backend];
-        healthy_backends.insert(target_name.clone(), initial_backend.clone());
+        healthy_backends
+            .write()
+            .unwrap()
+            .insert(target_name.clone(), initial_backend.clone());
         debug!(
             "Inserted initial backend for {}: {:?}",
             target_name.clone(),

@@ -365,6 +365,7 @@ dependencies = [
  "anyhow",
  "clap",
  "log",
+ "once_cell",
  "rand",
  "reqwest",
  "serde",
