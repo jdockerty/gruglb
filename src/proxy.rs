@@ -97,7 +97,7 @@ pub fn http_health(conf: Box<Config>) {
     }
 }
 
-pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Option<Vec<Backend>>>>) {
+pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Vec<Backend>>>) {
     let duration = Duration::from_secs(2);
 
     if let Some(targets) = &conf.targets {
@@ -106,7 +106,7 @@ pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Option<Vec<B
             let mut healthy_backends: Vec<Backend> = vec![];
             let mut healthy_targets = HashMap::new();
             for target in targets.values() {
-                healthy_targets.insert(target.name.clone(), None);
+                healthy_targets.insert(target.name.clone(), healthy_backends.clone());
                 if let Some(backends) = &target.backends {
                     for backend in backends {
                         let request_addr = &format!("{}:{}", backend.host, backend.port);
@@ -129,7 +129,7 @@ pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Option<Vec<B
                             //)
                         }
                     }
-                    healthy_targets.insert(target.name.clone(), Some(healthy_backends.clone()));
+                    healthy_targets.insert(target.name.clone(), healthy_backends.clone());
                 } else {
                     info!("No backends to health check for {}", target.name);
                 }

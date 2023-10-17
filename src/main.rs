@@ -40,8 +40,8 @@ fn main() -> Result<()> {
     let listen_addr = conf.address.clone();
     let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
     let (tx, rx): (
-        Sender<HashMap<String, Option<Vec<Backend>>>>,
-        Receiver<HashMap<String, Option<Vec<Backend>>>>,
+        Sender<HashMap<String, Vec<Backend>>>,
+        Receiver<HashMap<String, Vec<Backend>>>,
     ) = channel();
 
     FmtSubscriber::builder()
@@ -61,9 +61,7 @@ fn main() -> Result<()> {
         // Continually receive from the channel and update our healthy backend state.
         thread::spawn(move || loop {
             for (target, backends) in rx.recv().unwrap() {
-                if let Some(backends) = backends {
-                    healthy_targets.write().unwrap().insert(target, backends);
-                }
+                healthy_targets.write().unwrap().insert(target, backends);
             }
             debug!("HEALTHY BACKENDS: {:?}", healthy_targets);
             thread::sleep(Duration::from_secs(2));
