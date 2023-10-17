@@ -1,15 +1,22 @@
 mod config;
+mod proxy;
 
 use anyhow::Result;
 use clap::Parser;
-use rand::prelude::*;
-use serde_json::json;
+use config::{Backend, Target};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::fs::File;
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
+use std::sync::{
+    mpsc::{channel, Receiver, Sender},
+    Arc, Mutex, RwLock,
+};
+
 use std::path::PathBuf;
 use std::thread;
+use std::time::Duration;
 use tracing::{debug, error, info};
-use tracing_log::AsTrace;
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser, Debug)]
@@ -20,20 +27,24 @@ struct Cli {
     config: PathBuf,
 }
 
-fn work(name: &str, stream: TcpStream) {
-    println!("{name} starting work");
-    let res = json!({"status": "OK"});
-    thread::sleep(std::time::Duration::from_secs(5));
-    let _ = serde_json::to_writer(stream, &res);
-    println!("{name} done!");
-}
+static TCP_CURRENT_HEALTHY_TARGETS: Lazy<Arc<RwLock<HashMap<String, Vec<Backend>>>>> =
+    Lazy::new(|| {
+        let h = HashMap::new();
+        Arc::new(RwLock::new(h))
+    });
 
 fn main() -> Result<()> {
     let args = Cli::parse();
     let config_file = File::open(args.config)?;
-    let conf = config::new(config_file)?;
+    let conf = Box::new(config::new(config_file)?);
+    let listen_addr = conf.address.clone();
+    let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let (tx, rx): (
+        Sender<HashMap<String, Vec<Backend>>>,
+        Receiver<HashMap<String, Vec<Backend>>>,
+    ) = channel();
 
-    let _ = FmtSubscriber::builder()
+    FmtSubscriber::builder()
         .with_max_level(conf.log_level())
         .init();
 
@@ -41,23 +52,39 @@ fn main() -> Result<()> {
         if let Some(target_names) = conf.target_names() {
             debug!("All loaded targets {:?}", target_names);
         }
-        for (name, target) in targets {
-            let addr = format!("{}:{}", conf.address, target.listener);
-            let listener = TcpListener::bind(&addr).unwrap();
-            info!("Listening on {} for {name}", addr);
+
+        // Provides the health check thread with its own configuration.
+        let health_check_conf = conf.clone();
+        thread::spawn(move || proxy::tcp_health(health_check_conf, tx));
+        let healthy_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
+
+        // Continually receive from the channel and update our healthy backend state.
+        thread::spawn(move || loop {
+            for (target, backends) in rx.recv().unwrap() {
+                healthy_targets.write().unwrap().insert(target, backends);
+            }
+            thread::sleep(Duration::from_secs(2));
+        });
+
+        for (name, target) in targets.clone() {
+            // Assumes always using TCP for now.
+            let addr = format!("{}:{}", listen_addr.clone(), target.listener.unwrap());
+            let listener = TcpListener::bind(&addr)?;
+            info!("Listening on {} for {}", &addr, &name);
 
             // Listen to incoming traffic on separate threads
+            let idx = idx.clone();
             thread::spawn(move || {
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
+                            let idx = idx.clone();
+                            let tcp_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
                             // Pass the TCP streams over to separate threads to avoid
-                            // blocking.
+                            // blocking and give each thread its copy of the configuration.
+                            let target_name = name.clone();
                             thread::spawn(move || {
-                                let mut rng = thread_rng();
-                                let n: u32 = rng.gen();
-                                let name = &format!("thread-{}", n);
-                                work(name, stream);
+                                proxy::tcp_connection(tcp_targets, target_name, idx, stream)
                             });
                         }
                         Err(e) => {

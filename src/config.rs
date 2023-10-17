@@ -1,8 +1,14 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_yaml;
+
 use std::{collections::HashMap, fs::File};
 use tracing_subscriber::filter::LevelFilter;
+
+/// Protocol to use against a configured target.
+pub enum Protocol {
+    TCP,
+    HTTP,
+}
 
 // Represents the load balancer configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,8 +22,8 @@ pub struct Config {
     pub logging: String,
 
     /// The configured targets by the user.
-    /// The key of the HashMap structure is a simple convenience label for
-    /// configuration and access.
+    /// This provides a mapping between a convenient name and its
+    /// configured targets.
     pub targets: Option<HashMap<String, Target>>,
 }
 
@@ -35,7 +41,13 @@ fn default_logging() -> String {
 // traffic to configured backend servers.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Target {
-    pub listener: u16,
+    // Protocol to use for the target's backends.
+    pub protocol: String,
+
+    // Listener to use with TCP.
+    pub listener: Option<u16>,
+
+    /// Backends to route traffic to.
     pub backends: Option<Vec<Backend>>,
     // routing_algorithm: RoutingAlgorithm,
 }
@@ -44,9 +56,16 @@ pub struct Target {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Backend {
     pub host: String,
-    pub port: String,
-    pub healthcheck_path: String,
-    // healthcheck_interval: <type>
+    pub port: u16,
+    pub healthcheck_path: Option<String>,
+}
+
+impl PartialEq for Backend {
+    fn eq(&self, other: &Backend) -> bool {
+        self.port == other.port
+            && self.host == other.host
+            && self.healthcheck_path == other.healthcheck_path
+    }
 }
 
 // Choice of a variety of routing algorithms.
@@ -64,8 +83,10 @@ impl Config {
     pub fn ports(&self) -> Option<Vec<u16>> {
         if let Some(targets) = &self.targets {
             let mut ports = vec![];
-            for (_, t) in targets {
-                ports.push(t.listener);
+            for target in targets.values() {
+                if let Some(listener) = target.listener {
+                    ports.push(listener);
+                }
             }
             ports.sort();
             Some(ports)
@@ -78,7 +99,7 @@ impl Config {
     pub fn target_names(&self) -> Option<Vec<String>> {
         if let Some(targets) = &self.targets {
             let mut names = vec![];
-            for (name, _) in targets {
+            for name in targets.keys() {
                 names.push(name.to_string());
             }
             Some(names)
