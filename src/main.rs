@@ -63,14 +63,14 @@ fn main() -> Result<()> {
             for (target, backends) in rx.recv().unwrap() {
                 healthy_targets.write().unwrap().insert(target, backends);
             }
-            debug!("HEALTHY BACKENDS: {:?}", healthy_targets);
             thread::sleep(Duration::from_secs(2));
         });
 
-        for (listener, target) in targets.clone() {
-            let addr = format!("{}:{}", listen_addr.clone(), listener);
+        for (name, target) in targets.clone() {
+            // Assumes always using TCP for now.
+            let addr = format!("{}:{}", listen_addr.clone(), target.listener.unwrap());
             let listener = TcpListener::bind(&addr)?;
-            info!("Listening on {} for {}", &addr, &target.name);
+            info!("Listening on {} for {}", &addr, &name);
 
             // Listen to incoming traffic on separate threads
             let idx = idx.clone();
@@ -80,9 +80,9 @@ fn main() -> Result<()> {
                         Ok(stream) => {
                             let idx = idx.clone();
                             let tcp_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
-                            let target_name = target.clone().name;
                             // Pass the TCP streams over to separate threads to avoid
                             // blocking and give each thread its copy of the configuration.
+                            let target_name = name.clone();
                             thread::spawn(move || {
                                 proxy::tcp_connection(tcp_targets, target_name, idx, stream)
                             });

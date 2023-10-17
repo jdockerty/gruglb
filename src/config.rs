@@ -4,6 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::File};
 use tracing_subscriber::filter::LevelFilter;
 
+/// Protocol to use against a configured target.
+pub enum Protocol {
+    TCP,
+    HTTP,
+}
+
 // Represents the load balancer configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -16,9 +22,9 @@ pub struct Config {
     pub logging: String,
 
     /// The configured targets by the user.
-    /// This provides a mapping between a listener port and its
+    /// This provides a mapping between a convenient name and its
     /// configured targets.
-    pub targets: Option<HashMap<u16, Target>>,
+    pub targets: Option<HashMap<String, Target>>,
 }
 
 /// Default for the address binding of the application when not set.
@@ -35,8 +41,11 @@ fn default_logging() -> String {
 // traffic to configured backend servers.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Target {
-    /// Convenient label for the backends.
-    pub name: String,
+    // Protocol to use for the target's backends.
+    pub protocol: String,
+
+    // Listener to use with TCP.
+    pub listener: Option<u16>,
 
     /// Backends to route traffic to.
     pub backends: Option<Vec<Backend>>,
@@ -48,8 +57,7 @@ pub struct Target {
 pub struct Backend {
     pub host: String,
     pub port: u16,
-    pub healthcheck_path: String,
-    // healthcheck_interval: <type>
+    pub healthcheck_path: Option<String>,
 }
 
 impl PartialEq for Backend {
@@ -75,8 +83,10 @@ impl Config {
     pub fn ports(&self) -> Option<Vec<u16>> {
         if let Some(targets) = &self.targets {
             let mut ports = vec![];
-            for listener in targets.keys() {
-                ports.push(*listener);
+            for target in targets.values() {
+                if let Some(listener) = target.listener {
+                    ports.push(listener);
+                }
             }
             ports.sort();
             Some(ports)
@@ -89,8 +99,8 @@ impl Config {
     pub fn target_names(&self) -> Option<Vec<String>> {
         if let Some(targets) = &self.targets {
             let mut names = vec![];
-            for target in targets.values() {
-                names.push(target.name.clone());
+            for name in targets.keys() {
+                names.push(name.to_string());
             }
             Some(names)
         } else {
