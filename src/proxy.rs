@@ -1,15 +1,13 @@
 use crate::{
     config::{Backend, Config, Target},
-    TCP_CURRENT_HEALTHY_TARGETS, SendTargets, RecvTargets,
+    RecvTargets, SendTargets, TCP_CURRENT_HEALTHY_TARGETS,
 };
 use anyhow::Result;
 use std::{
     collections::HashMap,
     io::{Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
-    sync::{
-        Arc, Mutex, RwLock,
-    },
+    sync::{Arc, Mutex, RwLock},
     thread,
     time::Duration,
     vec,
@@ -186,31 +184,9 @@ pub fn tcp_connection(
     Ok(())
 }
 
-pub fn run(
-    conf: Arc<Config>,
-    targets: HashMap<String, Target>,
-    sender: SendTargets,
-    receiver: RecvTargets,
-) -> Result<()> {
+fn bind_tcp_listeners(conf: Arc<Config>, targets: HashMap<String, Target>) -> Result<()> {
     let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
-    if let Some(target_names) = conf.target_names() {
-        debug!("All loaded targets {:?}", target_names);
-    }
-
     let listen_addr = &conf.address;
-
-    // Provides the health check thread with its own configuration.
-    let health_check_conf = conf.clone();
-    thread::spawn(move || tcp_health(health_check_conf, sender));
-    let healthy_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
-
-    // Continually receive from the channel and update our healthy backend state.
-    thread::spawn(move || loop {
-        for (target, backends) in receiver.recv().unwrap() {
-            healthy_targets.write().unwrap().insert(target, backends);
-        }
-        thread::sleep(Duration::from_secs(2));
-    });
 
     for (name, target) in targets {
         // Assumes always using TCP for now.
@@ -241,4 +217,40 @@ pub fn run(
         });
     }
     Ok(())
+}
+
+pub fn run(
+    conf: Arc<Config>,
+    targets: HashMap<String, Target>,
+    sender: SendTargets,
+    receiver: RecvTargets,
+) -> Result<()> {
+    if let Some(target_names) = conf.target_names() {
+        debug!("All loaded targets {:?}", target_names);
+    }
+
+    // Provides the health check thread with its own configuration.
+    let health_check_conf = conf.clone();
+    thread::spawn(move || tcp_health(health_check_conf, sender));
+    let healthy_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
+
+    // Continually receive from the channel and update our healthy backend state.
+    thread::spawn(move || loop {
+        for (target, backends) in receiver.recv().unwrap() {
+            healthy_targets.write().unwrap().insert(target, backends);
+        }
+        thread::sleep(Duration::from_secs(2));
+    });
+
+    bind_tcp_listeners(conf, targets)?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn tcp_health_registers_correctly() {
+        todo!()
+    }
 }
