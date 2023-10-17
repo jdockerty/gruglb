@@ -1,13 +1,13 @@
 use crate::{
     config::{Backend, Config, Target},
-    TCP_HEALTHY_TARGETS,
+    TCP_CURRENT_HEALTHY_TARGETS,
 };
 use once_cell::sync::Lazy;
 use std::{
     collections::HashMap,
     io::{Read, Write},
     net::{Shutdown, TcpStream},
-    sync::{Arc, Mutex, RwLock},
+    sync::{mpsc::Sender, Arc, Mutex, RwLock},
     thread,
     time::Duration,
     vec,
@@ -54,7 +54,7 @@ pub fn http_health(conf: Box<Config>) {
                                     add_backend(
                                         target.name.clone(),
                                         backend.clone(),
-                                        Arc::clone(&TCP_HEALTHY_TARGETS),
+                                        Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS),
                                     );
                                 }
 
@@ -69,7 +69,7 @@ pub fn http_health(conf: Box<Config>) {
                                     remove_backend(
                                         target.name.clone(),
                                         backend.clone(),
-                                        Arc::clone(&TCP_HEALTHY_TARGETS),
+                                        Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS),
                                     );
                                 }
                             }
@@ -81,7 +81,7 @@ pub fn http_health(conf: Box<Config>) {
                                 remove_backend(
                                     target.name.clone(),
                                     backend.clone(),
-                                    Arc::clone(&TCP_HEALTHY_TARGETS),
+                                    Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS),
                                 );
                             }
                         }
@@ -97,41 +97,45 @@ pub fn http_health(conf: Box<Config>) {
     }
 }
 
-pub fn tcp_health(conf: Box<Config>, tcp_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>) {
+pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Option<Vec<Backend>>>>) {
     let duration = Duration::from_secs(2);
 
     if let Some(targets) = &conf.targets {
         info!("Starting TCP health checks");
         loop {
-            debug!("Healthy TCP: {:?}", tcp_targets);
+            let mut healthy_backends: Vec<Backend> = vec![];
+            let mut healthy_targets = HashMap::new();
             for target in targets.values() {
+                healthy_targets.insert(target.name.clone(), None);
                 if let Some(backends) = &target.backends {
                     for backend in backends {
                         let request_addr = &format!("{}:{}", backend.host, backend.port);
 
-                        if let Ok(_) = TcpStream::connect(request_addr) {
+                        if let Ok(stream) = TcpStream::connect(request_addr) {
+                            stream.shutdown(Shutdown::Both).unwrap();
                             info!("{request_addr} is healthy backend for {}", target.name);
-                            add_backend(
-                                target.name.clone(),
-                                backend.clone(),
-                                Arc::clone(&TCP_HEALTHY_TARGETS),
-                            );
+                            healthy_backends.push(backend.clone());
+                            //add_backend(
+                            //    target.name.clone(),
+                            //    backend.clone(),
+                            //    Arc::clone(&tcp_targets),
+                            //);
                         } else {
-                            debug!(
-                                "{request_addr} is unhealthy for {}, attempting to remove",
-                                target.name
-                            );
-                            remove_backend(
-                                target.name.clone(),
-                                backend.clone(),
-                                Arc::clone(&TCP_HEALTHY_TARGETS),
-                            )
+                            debug!("{request_addr} is unhealthy for {}, not added", target.name);
+                            //remove_backend(
+                            //    target.name.clone(),
+                            //    backend.clone(),
+                            //    Arc::clone(&tcp_targets),
+                            //)
                         }
                     }
+                    healthy_targets.insert(target.name.clone(), Some(healthy_backends.clone()));
                 } else {
                     info!("No backends to health check for {}", target.name);
                 }
             }
+            debug!("Sending healthy targets to channel");
+            sender.send(healthy_targets).unwrap();
             thread::sleep(duration);
         }
     } else {

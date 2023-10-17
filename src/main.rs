@@ -8,10 +8,14 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::fs::File;
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{
+    mpsc::{channel, Receiver, Sender},
+    Arc, Mutex, RwLock,
+};
 
 use std::path::PathBuf;
 use std::thread;
+use std::time::Duration;
 use tracing::{debug, error, info};
 use tracing_subscriber::FmtSubscriber;
 
@@ -23,10 +27,11 @@ struct Cli {
     config: PathBuf,
 }
 
-static TCP_HEALTHY_TARGETS: Lazy<Arc<RwLock<HashMap<String, Vec<Backend>>>>> = Lazy::new(|| {
-    let h = HashMap::new();
-    Arc::new(RwLock::new(h))
-});
+static TCP_CURRENT_HEALTHY_TARGETS: Lazy<Arc<RwLock<HashMap<String, Vec<Backend>>>>> =
+    Lazy::new(|| {
+        let h = HashMap::new();
+        Arc::new(RwLock::new(h))
+    });
 
 fn main() -> Result<()> {
     let args = Cli::parse();
@@ -34,6 +39,10 @@ fn main() -> Result<()> {
     let conf = Box::new(config::new(config_file)?);
     let listen_addr = conf.address.clone();
     let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let (tx, rx): (
+        Sender<HashMap<String, Option<Vec<Backend>>>>,
+        Receiver<HashMap<String, Option<Vec<Backend>>>>,
+    ) = channel();
 
     FmtSubscriber::builder()
         .with_max_level(conf.log_level())
@@ -46,8 +55,19 @@ fn main() -> Result<()> {
 
         // Provides the health check thread with its own configuration.
         let health_check_conf = conf.clone();
-        let tcp_targets = Arc::clone(&TCP_HEALTHY_TARGETS);
-        thread::spawn(move || proxy::tcp_health(health_check_conf, tcp_targets));
+        thread::spawn(move || proxy::tcp_health(health_check_conf, tx));
+        let healthy_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
+
+        // Continually receive from the channel and update our healthy backend state.
+        thread::spawn(move || loop {
+            for (target, backends) in rx.recv().unwrap() {
+                if let Some(backends) = backends {
+                    healthy_targets.write().unwrap().insert(target, backends);
+                }
+            }
+            debug!("HEALTHY BACKENDS: {:?}", healthy_targets);
+            thread::sleep(Duration::from_secs(2));
+        });
 
         for (listener, target) in targets.clone() {
             let addr = format!("{}:{}", listen_addr.clone(), listener);
@@ -61,7 +81,7 @@ fn main() -> Result<()> {
                     match stream {
                         Ok(stream) => {
                             let idx = idx.clone();
-                            let tcp_targets = Arc::clone(&TCP_HEALTHY_TARGETS);
+                            let tcp_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
                             let target_name = target.clone().name;
                             // Pass the TCP streams over to separate threads to avoid
                             // blocking and give each thread its copy of the configuration.
