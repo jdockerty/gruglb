@@ -1,13 +1,13 @@
 logging: debug
 targets:
-  9090:
-    name: webServersA
+  webServersA:
+    protocol: 'tcp'
+    listener: 9090
     backends:
-      - host: "127.0.0.1" 
+      - host: "127.0.0.1"
         port: 8090
-        healthcheck_path: /hello
       - host: "127.0.0.1"
         port: 8091
-        healthcheck_path: /hello
-  9091:
-    name: webServersB
+  webServersB:
+    protocol: 'tcp'
+    listener: 9091
