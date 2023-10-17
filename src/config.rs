@@ -5,9 +5,10 @@ use std::{collections::HashMap, fs::File};
 use tracing_subscriber::filter::LevelFilter;
 
 /// Protocol to use against a configured target.
+#[allow(dead_code)]
 pub enum Protocol {
-    TCP,
-    HTTP,
+    Tcp,
+    Http,
 }
 
 // Represents the load balancer configuration.
@@ -69,6 +70,7 @@ impl PartialEq for Backend {
 }
 
 // Choice of a variety of routing algorithms.
+#[allow(dead_code)]
 pub enum RoutingAlgorithm {
     Simple,
 }
@@ -80,6 +82,7 @@ pub fn new(config_file: File) -> Result<Config> {
 
 impl Config {
     /// Retrieve the configured ports in ascending order.
+    #[allow(dead_code)]
     pub fn ports(&self) -> Option<Vec<u16>> {
         if let Some(targets) = &self.targets {
             let mut ports = vec![];
