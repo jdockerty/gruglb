@@ -195,12 +195,12 @@ fn bind_tcp_listeners(conf: Arc<Config>, targets: HashMap<String, Target>) -> Re
         info!("Listening on {} for {}", &addr, &name);
 
         // Listen to incoming traffic on separate threads
-        let idx = idx.clone();
+        let idx = Arc::clone(&idx);
         thread::spawn(move || {
             for stream in listener.incoming() {
                 match stream {
                     Ok(stream) => {
-                        let idx = idx.clone();
+                        let idx = Arc::clone(&idx);
                         let tcp_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
                         // Pass the TCP streams over to separate threads to avoid
                         // blocking and give each thread its copy of the configuration.
