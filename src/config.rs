@@ -81,23 +81,6 @@ pub fn new(config_file: File) -> Result<Config> {
 }
 
 impl Config {
-    /// Retrieve the configured ports in ascending order.
-    #[allow(dead_code)]
-    pub fn ports(&self) -> Option<Vec<u16>> {
-        if let Some(targets) = &self.targets {
-            let mut ports = vec![];
-            for target in targets.values() {
-                if let Some(listener) = target.listener {
-                    ports.push(listener);
-                }
-            }
-            ports.sort();
-            Some(ports)
-        } else {
-            None
-        }
-    }
-
     /// Retrieve a list of names given to targets.
     pub fn target_names(&self) -> Option<Vec<String>> {
         if let Some(targets) = &self.targets {
@@ -123,18 +106,6 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn config_ports_match() {
-        let test_config = File::open("tests/fixtures/example-config.yaml").unwrap();
-
-        let conf = new(test_config).unwrap();
-
-        let expected_ports: Vec<u16> = vec![9090, 9091];
-        let actual_ports = conf.ports().unwrap();
-
-        assert_eq!(actual_ports, expected_ports);
-    }
 
     #[test]
     fn named_targets_match() {
