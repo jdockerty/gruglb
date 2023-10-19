@@ -182,6 +182,7 @@ pub fn tcp_connection(
     Ok(())
 }
 
+/// Bind to the configured listener ports for incoming TCP connections.
 pub fn bind_tcp_listeners(
     bind_address: String,
     current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,

@@ -33,6 +33,7 @@ pub fn new(conf: Config, logging: bool) -> LB {
 }
 
 impl LB {
+    /// Run the application.
     pub fn run(&self, sender: SendTargets, receiver: RecvTargets) -> Result<()> {
         if let Some(target_names) = self.conf.target_names() {
             debug!("All loaded targets {:?}", target_names);
