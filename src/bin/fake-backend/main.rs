@@ -33,7 +33,7 @@ fn main() {
 
         while let Ok((mut stream, addr)) = addr.accept() {
             println!("Incoming from {}", addr);
-            let buf = String::from(format!("Hello from {}", args.id));
+            let buf = format!("Hello from {}", args.id);
             stream.write_all(buf.as_bytes()).unwrap();
         }
     }
