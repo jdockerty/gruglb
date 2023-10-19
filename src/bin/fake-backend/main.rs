@@ -8,9 +8,11 @@ struct Cli {
     #[arg(long, default_value = "8090")]
     port: u16,
 
+    /// Protocol to listen for with the server, should be one of 'tcp' or 'http'
     #[arg(long, default_value = "tcp")]
     protocol: String,
 
+    /// ID of the server, used for knowing which server you are receiving responses from.
     #[arg(long)]
     id: String,
 }
