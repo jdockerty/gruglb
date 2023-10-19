@@ -1,57 +1,47 @@
-use crate::{config, proxy};
+use crate::config::{Backend, Config};
+use crate::proxy::{bind_tcp_listeners, tcp_health};
 use anyhow::Result;
 use std::collections::HashMap;
-use std::sync::{
-    mpsc::{channel, Receiver, Sender},
-    Arc, RwLock,
-};
-use tracing::{debug, error, info};
+use std::sync::mpsc::SyncSender;
+use std::sync::{mpsc::Receiver, Arc, RwLock};
+use std::thread;
+use std::time::Duration;
+use tracing::debug;
 use tracing_subscriber::FmtSubscriber;
 
-type SendTargets = Sender<HashMap<String, Vec<config::Backend>>>;
-type RecvTargets = Receiver<HashMap<String, Vec<config::Backend>>>;
+pub type SendTargets = SyncSender<HashMap<String, Vec<Backend>>>;
+pub type RecvTargets = Receiver<HashMap<String, Vec<Backend>>>;
 
 /// Load balancer application
-struct LB {
-    pub conf: Arc<config::Config>,
-    current_healthy_targets: Arc<RwLock<HashMap<String, Vec<config::Backend>>>>,
-    sender: SendTargets,
-    receiver: RecvTargets,
+pub struct LB {
+    pub conf: Arc<Config>,
+    current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
 }
 
 /// Construct a new instance of gruglb
-pub fn new(conf: config::Config, logging: bool) -> LB {
-    let (tx, rx): (SendTargets, RecvTargets) = channel();
-
+pub fn new(conf: Config, logging: bool) -> LB {
     if logging {
         FmtSubscriber::builder()
             .with_max_level(conf.log_level())
             .init();
     }
-    return LB {
-        sender: tx,
-        receiver: rx,
+
+    LB {
         conf: Arc::new(conf),
         current_healthy_targets: Arc::new(RwLock::new(HashMap::new())),
-    };
+    }
 }
 
 impl LB {
-    pub fn run(
-        &self,
-        conf: Arc<Config>,
-        targets: HashMap<String, Target>,
-        sender: SendTargets,
-        receiver: RecvTargets,
-    ) -> Result<()> {
-        if let Some(target_names) = conf.target_names() {
+    pub fn run(&self, sender: SendTargets, receiver: RecvTargets) -> Result<()> {
+        if let Some(target_names) = self.conf.target_names() {
             debug!("All loaded targets {:?}", target_names);
         }
 
         // Provides the health check thread with its own configuration.
-        let health_check_conf = conf.clone();
+        let health_check_conf = self.conf.clone();
         thread::spawn(move || tcp_health(health_check_conf, sender));
-        let healthy_targets = Arc::clone(&TCP_CURRENT_HEALTHY_TARGETS);
+        let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
         thread::spawn(move || loop {
@@ -61,7 +51,11 @@ impl LB {
             thread::sleep(Duration::from_secs(2));
         });
 
-        bind_tcp_listeners(conf, targets)?;
+        bind_tcp_listeners(
+            self.conf.address.clone(),
+            Arc::clone(&self.current_healthy_targets),
+            self.conf.targets.clone().unwrap(),
+        )?;
 
         Ok(())
     }

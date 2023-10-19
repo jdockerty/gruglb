@@ -1,5 +1,5 @@
 use crate::config::{Backend, Config, Target};
-use crate::lb;
+use crate::lb::SendTargets;
 use anyhow::Result;
 use std::{
     collections::HashMap,
@@ -197,6 +197,7 @@ pub fn bind_tcp_listeners(
 
         // Listen to incoming traffic on separate threads
         let idx = Arc::clone(&idx);
+        let current_healthy_targets = Arc::clone(&current_healthy_targets);
         thread::spawn(move || {
             for stream in listener.incoming() {
                 match stream {
