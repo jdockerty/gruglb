@@ -20,25 +20,12 @@ struct Cli {
     config: PathBuf,
 }
 
-type InitialTcpTargets = Lazy<Arc<RwLock<HashMap<String, Vec<config::Backend>>>>>;
-
-static TCP_CURRENT_HEALTHY_TARGETS: InitialTcpTargets = Lazy::new(|| {
-    let h = HashMap::new();
-    Arc::new(RwLock::new(h))
-});
-
 fn main() -> Result<()> {
     let args = Cli::parse();
     let config_file = File::open(args.config)?;
-    let lb = lb::new(config::new(config_file)?);
-    let (tx, rx): (SendTargets, RecvTargets) = channel();
+    let lb = lb::new(config::new(config_file)?, true);
 
-    if let Some(targets) = &conf.targets {
-        proxy::run(Arc::clone(&conf), targets.clone(), tx, rx)?;
-    } else {
-        info!("No listeners configured, nothing to do.");
-        return Ok(());
-    }
+    lb.run();
 
     // Sleep main thread so spawned threads can run
     thread::park();
