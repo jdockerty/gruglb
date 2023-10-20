@@ -19,12 +19,10 @@ pub struct LB {
 }
 
 /// Construct a new instance of gruglb
-pub fn new(conf: Config, logging: bool) -> LB {
-    if logging {
-        FmtSubscriber::builder()
-            .with_max_level(conf.log_level())
-            .init();
-    }
+pub fn new(conf: Config) -> LB {
+    FmtSubscriber::builder()
+        .with_max_level(conf.log_level())
+        .init();
 
     LB {
         conf: Arc::new(conf),

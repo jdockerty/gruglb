@@ -20,7 +20,7 @@ struct Cli {
 fn main() -> Result<()> {
     let args = Cli::parse();
     let config_file = File::open(args.config)?;
-    let lb = lb::new(config::new(config_file)?, true);
+    let lb = lb::new(config::new(config_file)?);
     let channel_size = lb.conf.target_names().map_or(2, |targets| targets.len());
     let (send, recv): (lb::SendTargets, lb::RecvTargets) = sync_channel(channel_size);
 
