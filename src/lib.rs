@@ -1,4 +1,5 @@
 pub mod config;
+pub mod fakebackend;
 pub mod lb;
 pub mod proxy;
 

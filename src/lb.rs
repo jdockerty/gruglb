@@ -15,7 +15,7 @@ pub type RecvTargets = Receiver<HashMap<String, Vec<Backend>>>;
 /// Load balancer application
 pub struct LB {
     pub conf: Arc<Config>,
-    current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    pub current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
 }
 
 /// Construct a new instance of gruglb
