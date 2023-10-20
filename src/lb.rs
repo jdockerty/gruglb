@@ -1,5 +1,5 @@
 use crate::config::{Backend, Config};
-use crate::proxy::{bind_tcp_listeners, tcp_health};
+use crate::proxy;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::mpsc::SyncSender;
@@ -39,7 +39,7 @@ impl LB {
 
         // Provides the health check thread with its own configuration.
         let health_check_conf = self.conf.clone();
-        thread::spawn(move || tcp_health(health_check_conf, sender));
+        thread::spawn(move || proxy::tcp_health(health_check_conf, sender));
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
@@ -50,7 +50,7 @@ impl LB {
             thread::sleep(Duration::from_secs(2));
         });
 
-        bind_tcp_listeners(
+        proxy::bind_tcp_listeners(
             self.conf.address.clone(),
             Arc::clone(&self.current_healthy_targets),
             self.conf.targets.clone().unwrap(),
