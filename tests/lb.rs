@@ -1,6 +1,9 @@
-use std::{thread, time::Duration};
-
+use assert_cmd::prelude::{OutputAssertExt, *};
 use gruglb;
+use predicates::prelude::*;
+use std::process::Command;
+use std::sync::Arc;
+use std::{thread, time::Duration};
 
 mod common;
 
@@ -10,36 +13,30 @@ const FAKE_BACKEND_PORT: &str = "FAKE_BACKEND_PORT";
 
 #[test]
 fn register_healthy_targets() {
-    let test_config = common::get_test_config();
+    thread::spawn(move || {
+        let mut cmd = Command::cargo_bin("fake_backend").unwrap();
+        cmd.args(["--id", "fake-1", "--port", "8095"]).unwrap();
+    });
+    thread::spawn(move || {
+        let mut cmd = Command::cargo_bin("fake_backend").unwrap();
+        cmd.args(["--id", "fake-2", "--port", "8096"]).unwrap();
+    });
 
-    let lb = gruglb::lb::new(test_config);
+    let test_config = common::get_single_target_config();
+
     let (send, recv) = common::get_send_recv();
-
-    thread::spawn(move || {
-        std::env::set_var(FAKE_BACKEND_PORT, "8090");
-        std::env::set_var(FAKE_BACKEND_ID, "fake1");
-        gruglb::fakebackend::run()
-    });
-
-    thread::spawn(move || {
-        std::env::set_var(FAKE_BACKEND_PORT, "8093");
-        std::env::set_var(FAKE_BACKEND_ID, "fake2");
-        gruglb::fakebackend::run()
-    });
-
+    let lb = gruglb::lb::new(test_config);
     let _ = lb.run(send, recv);
 
-    // The `.run()` call spawns multiple separate threads for its work, so we can
-    // sleep the main test thread in order to allow it to do its thing.
     thread::sleep(Duration::from_secs(10));
 
-    let healthy_target_count = lb
+    let healthy_backends = lb
         .current_healthy_targets
         .read()
         .unwrap()
-        .get("9090")
+        .get("webServersA")
         .unwrap()
-        .len();
+        .to_owned();
 
-    assert_eq!(healthy_target_count, 2);
+    assert_eq!(healthy_backends.len(), 2);
 }
