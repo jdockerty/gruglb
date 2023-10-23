@@ -1,15 +1,9 @@
-use assert_cmd::prelude::{OutputAssertExt, *};
+use assert_cmd::prelude::*;
 use gruglb;
-use predicates::prelude::*;
 use std::process::Command;
-use std::sync::Arc;
 use std::{thread, time::Duration};
 
 mod common;
-
-const FAKE_BACKEND_PROTOCOL: &str = "FAKE_BACKEND_PROTOCOL";
-const FAKE_BACKEND_ID: &str = "FAKE_BACKEND_ID";
-const FAKE_BACKEND_PORT: &str = "FAKE_BACKEND_PORT";
 
 #[test]
 fn register_healthy_targets() {
