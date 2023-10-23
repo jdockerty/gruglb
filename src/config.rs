@@ -14,28 +14,17 @@ pub enum Protocol {
 // Represents the load balancer configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Bind address of the application, defaults to 127.0.0.1 if not set.
-    #[serde(default = "default_address")]
-    pub address: String,
+    /// Bind address of the application, defaults to 127.0.0.1.
+    pub address: Option<String>,
 
     /// Log level of the application, defaults to INFO.
-    #[serde(default = "default_logging")]
-    pub logging: String,
+    pub logging: Option<String>,
 
     /// The configured targets by the user.
     /// This provides a mapping between a convenient name and its
     /// configured targets.
+    /// When no targets are provided, nothing happens.
     pub targets: Option<HashMap<String, Target>>,
-}
-
-/// Default for the address binding of the application when not set.
-fn default_address() -> String {
-    "127.0.0.1".to_string()
-}
-
-/// Default log level of the application when not set.
-fn default_logging() -> String {
-    "INFO".to_string()
 }
 
 // A target encapsulates a port that the load balancer listens on for forwarding
@@ -95,7 +84,13 @@ impl Config {
     }
 
     pub fn log_level(&self) -> LevelFilter {
-        match self.logging.to_uppercase().as_str() {
+        match self
+            .logging
+            .to_owned()
+            .unwrap_or_else(|| "INFO".to_string())
+            .to_uppercase()
+            .as_str()
+        {
             "TRACE" => LevelFilter::TRACE,
             "DEBUG" => LevelFilter::DEBUG,
             _ => LevelFilter::INFO,

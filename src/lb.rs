@@ -51,7 +51,10 @@ impl LB {
         });
 
         proxy::bind_tcp_listeners(
-            self.conf.address.clone(),
+            self.conf
+                .address
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
             Arc::clone(&self.current_healthy_targets),
             self.conf.targets.clone().unwrap(),
         )?;
