@@ -124,15 +124,15 @@ pub fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
 }
 
 // Proxy a TCP connection to a range of configured backend servers.
-pub fn tcp_connection(
+pub fn tcp_connection<S>(
     targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
     target_name: String,
     routing_idx: Arc<Mutex<usize>>,
-    mut stream: TcpStream,
-) -> Result<()> {
-    let request_port = stream.local_addr().unwrap().port();
-    info!("Incoming request on {}", &request_port);
-
+    mut stream: S,
+) -> Result<()>
+where
+    S: Read + Write,
+{
     if let Some(backends) = targets.read().unwrap().get(&target_name) {
         let backends = backends.to_vec();
         debug!("Backends configured {:?}", &backends);
@@ -167,16 +167,14 @@ pub fn tcp_connection(
                 let mut buffer = Vec::new();
                 response.read_to_end(&mut buffer)?;
                 stream.write_all(&buffer)?;
-                stream.shutdown(Shutdown::Both)?;
                 debug!("TCP stream closed");
             }
             Err(e) => {
-                stream.shutdown(Shutdown::Both)?;
                 error!("{e}")
             }
         };
     } else {
-        info!("No backend configured for {}", &request_port);
+        info!("No backend configured");
     };
 
     Ok(())
@@ -203,6 +201,9 @@ pub fn bind_tcp_listeners(
             for stream in listener.incoming() {
                 match stream {
                     Ok(stream) => {
+                        let request_port = stream.local_addr().unwrap().port();
+                        info!("Incoming request on {}", &request_port);
+
                         let idx = Arc::clone(&idx);
                         let tcp_targets = Arc::clone(&current_healthy_targets);
                         // Pass the TCP streams over to separate threads to avoid
@@ -222,10 +223,10 @@ pub fn bind_tcp_listeners(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn tcp_health_registers_correctly() {
-        todo!()
-    }
-}
+//#[cfg(test)]
+//mod tests {
+//    #[test]
+//    fn tcp_health_registers_correctly() {
+//        todo!()
+//    }
+//}
