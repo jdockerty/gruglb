@@ -1,9 +1,11 @@
-use crate::config::{Backend, Config};
+use crate::config::{Backend, Config, Target};
+use crate::lb::SendTargets;
+use anyhow::Result;
 use std::{
     collections::HashMap,
     io::{Read, Write},
-    net::{Shutdown, TcpStream},
-    sync::{mpsc::Sender, Arc, Mutex, RwLock},
+    net::{Shutdown, TcpListener, TcpStream},
+    sync::{Arc, Mutex, RwLock},
     thread,
     time::Duration,
     vec,
@@ -78,7 +80,8 @@ use tracing::{debug, error, info};
 //    }
 //}
 
-pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Vec<Backend>>>) {
+/// Run health checks against the configured TCP targets.
+pub fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
     let duration = Duration::from_secs(5);
 
     if let Some(targets) = &conf.targets {
@@ -97,6 +100,9 @@ pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Vec<Backend>
                             info!("{request_addr} is healthy backend for {}", name);
                             healthy_backends.push(backend.clone());
                         } else {
+                            // This is "removed from the pool" because it is not included in
+                            // the vector for the next channel transmission, so traffic does not get routed
+                            // to it.
                             debug!(
                                 "{request_addr} is unhealthy for {}, removing from pool",
                                 name
@@ -108,7 +114,7 @@ pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Vec<Backend>
                     info!("No backends to health check for {}", name);
                 }
             }
-            debug!("Sending healthy targets to channel");
+            debug!("Sending targets to channel");
             sender.send(healthy_targets).unwrap();
             thread::sleep(duration);
         }
@@ -118,15 +124,15 @@ pub fn tcp_health(conf: Box<Config>, sender: Sender<HashMap<String, Vec<Backend>
 }
 
 // Proxy a TCP connection to a range of configured backend servers.
-pub fn tcp_connection(
+pub fn tcp_connection<S>(
     targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
     target_name: String,
     routing_idx: Arc<Mutex<usize>>,
-    mut stream: TcpStream,
-) {
-    let request_port = stream.local_addr().unwrap().port();
-    info!("Incoming request on {}", &request_port);
-
+    mut stream: S,
+) -> Result<()>
+where
+    S: Read + Write,
+{
     if let Some(backends) = targets.read().unwrap().get(&target_name) {
         let backends = backends.to_vec();
         debug!("Backends configured {:?}", &backends);
@@ -134,7 +140,7 @@ pub fn tcp_connection(
 
         if backend_count == 0 {
             info!("No routable backends for {target_name}, nothing to do");
-            return;
+            return Ok(());
         }
 
         let mut idx = match routing_idx.lock() {
@@ -150,20 +156,77 @@ pub fn tcp_connection(
         }
 
         let backend_addr = format!("{}:{}", backends[*idx].host, backends[*idx].port);
+
+        // Increment a shared index after we've constructed our current connection
+        // address.
         *idx += 1;
 
         info!("Attempting to connect to {}", &backend_addr);
         match TcpStream::connect(backend_addr) {
             Ok(mut response) => {
                 let mut buffer = Vec::new();
-                response.read_to_end(&mut buffer).unwrap();
-                stream.write_all(&buffer).unwrap();
-                stream.shutdown(Shutdown::Both).unwrap();
+                response.read_to_end(&mut buffer)?;
+                stream.write_all(&buffer)?;
                 debug!("TCP stream closed");
             }
-            Err(e) => error!("{e}"),
+            Err(e) => {
+                error!("{e}")
+            }
         };
     } else {
-        info!("No backend configured for {}", &request_port);
+        info!("No backend configured");
     };
+
+    Ok(())
 }
+
+/// Bind to the configured listener ports for incoming TCP connections.
+pub fn bind_tcp_listeners(
+    bind_address: String,
+    current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    targets: HashMap<String, Target>,
+) -> Result<()> {
+    let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+
+    for (name, target) in targets {
+        // Assumes always using TCP for now.
+        let addr = format!("{}:{}", bind_address.clone(), target.listener.unwrap());
+        let listener = TcpListener::bind(&addr)?;
+        info!("Listening on {} for {}", &addr, &name);
+
+        // Listen to incoming traffic on separate threads
+        let idx = Arc::clone(&idx);
+        let current_healthy_targets = Arc::clone(&current_healthy_targets);
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        let request_port = stream.local_addr().unwrap().port();
+                        info!("Incoming request on {}", &request_port);
+
+                        let idx = Arc::clone(&idx);
+                        let tcp_targets = Arc::clone(&current_healthy_targets);
+                        // Pass the TCP streams over to separate threads to avoid
+                        // blocking and give each thread its copy of the configuration.
+                        let target_name = name.clone();
+                        thread::spawn(move || {
+                            tcp_connection(tcp_targets, target_name, idx, stream)
+                        });
+                    }
+                    Err(e) => {
+                        error!("Unable to connect: {}", e);
+                    }
+                }
+            }
+        });
+    }
+    Ok(())
+}
+
+//#[cfg(test)]
+//mod tests {
+//    #[test]
+//    fn tcp_health_registers_correctly() {
+//        todo!()
+//    }
+//}
