@@ -1,5 +1,4 @@
 use clap::Parser;
-use http::{response, version, HeaderValue};
 use std::{io::Write, net::TcpListener};
 
 #[derive(Parser, Debug)]
@@ -24,26 +23,32 @@ pub fn run() {
         "http" => {
             let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).unwrap();
 
-            println!("[{}] Listening on {}", args.id, addr.local_addr().unwrap());
+            println!(
+                "[{}] Listening for HTTP requests on {}",
+                args.id,
+                addr.local_addr().unwrap()
+            );
 
             while let Ok((mut stream, addr)) = addr.accept() {
                 println!("Incoming from {}", addr);
                 let msg = &format!("Hello from {}", args.id);
-                let resp = response::Response::builder()
-                    .version(version::Version::HTTP_11)
-                    .header("Content-Length", msg.len())
-                    .header("Content-Type", "text/plain")
-                    .body(msg)
-                    .unwrap();
+                let status_line = "HTTP/1.1 200 OK";
+                let length = msg.len();
 
+                let response =
+                    format!("{status_line}\r\nContent-Length: {length}\nContent-Type: text/plain\r\n\r\n{msg}");
 
-                stream.write_all(resp.body().as_bytes()).unwrap();
+                stream.write_all(response.as_bytes()).unwrap();
             }
         }
         _ => {
             let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).unwrap();
 
-            println!("[{}] Listening on {}", args.id, addr.local_addr().unwrap());
+            println!(
+                "[{}] Listening for TCP on {}",
+                args.id,
+                addr.local_addr().unwrap()
+            );
 
             while let Ok((mut stream, addr)) = addr.accept() {
                 println!("Incoming from {}", addr);

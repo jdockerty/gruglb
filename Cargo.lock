@@ -418,7 +418,6 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "clap",
- "http",
  "log",
  "once_cell",
  "predicates",
