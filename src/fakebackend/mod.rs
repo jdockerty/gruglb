@@ -1,18 +1,5 @@
 use clap::Parser;
-use std::convert::Infallible;
-use std::io::Write;
-use std::net::SocketAddr;
-
-use http_body_util::Full;
-use hyper::body::{Bytes, Incoming as IncomingBody};
-use hyper::server::conn::http1;
-use hyper::service::{service_fn, Service};
-use hyper::{body::Body, Request, Response};
-use hyper_util::rt::TokioIo;
-use std::future::Future;
-use std::pin::Pin;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
+use std::{io::Write, net::TcpListener};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -30,71 +17,35 @@ struct Cli {
     id: String,
 }
 
-struct Svc {
-    msg: String,
-}
-
-impl Service<Request<IncomingBody>> for Svc {
-    type Response = Response<Full<Bytes>>;
-    type Error = hyper::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn call(&self, req: Request<IncomingBody>) -> Self::Future {
-        fn hello(msg: String) -> Result<Response<Full<Bytes>>, hyper::Error> {
-            Ok(Response::builder()
-                .body(Full::new(Bytes::from(msg)))
-                .unwrap())
-        }
-        let res = match req.uri().path() {
-            _ => hello(format!("Hello from {}", self.msg)),
-        };
-        Box::pin(async { res })
-    }
-}
-
-pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn run() {
     let args = Cli::parse();
     match args.protocol.to_lowercase().as_str() {
         "http" => {
-            let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).await?;
-            println!(
-                "[{}] Listening on {}",
-                args.id.clone(),
-                addr.local_addr().unwrap()
-            );
-            loop {
-                let (stream, _) = addr.accept().await?;
-
-                // Use an adapter to access something implementing `tokio::io` traits as if they implement
-                // `hyper::rt` IO traits.
-                let io = TokioIo::new(stream);
-
-                let msg = format!("Hello from {}", args.id.clone());
-                // Spawn a tokio task to serve multiple connections concurrently
-                tokio::task::spawn(async move {
-                    // Finally, we bind the incoming connection to our `hello` service
-                    if let Err(err) = http1::Builder::new()
-                        // `service_fn` converts our function in a `Service`
-                        .serve_connection(io, Svc { msg })
-                        .await
-                    {
-                        println!("Error serving connection: {:?}", err);
-                    }
-                });
-            }
-        }
-        // Default to TCP
-        _ => {
-            let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).await?;
+            let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).unwrap();
 
             println!("[{}] Listening on {}", args.id, addr.local_addr().unwrap());
 
-            loop {
-                let (mut stream, addr) = addr.accept().await?;
+            while let Ok((mut stream, addr)) = addr.accept() {
                 println!("Incoming from {}", addr);
-                let buf = format!("Hello from {}", args.id);
-                stream.write_all(buf.as_bytes()).await?;
+                let status_line = "HTTP/1.1 200 OK";
+                let msg = format!("Hello from {}", args.id);
+                let length = msg.len();
+
+                let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{msg}");
+
+                stream.write_all(response.as_bytes()).unwrap();
             }
         }
-    };
+        _ => {
+            let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).unwrap();
+
+            println!("[{}] Listening on {}", args.id, addr.local_addr().unwrap());
+
+            while let Ok((mut stream, addr)) = addr.accept() {
+                println!("Incoming from {}", addr);
+                let buf = format!("Hello from {}", args.id);
+                stream.write_all(buf.as_bytes()).unwrap();
+            }
+        }
+    }
 }
