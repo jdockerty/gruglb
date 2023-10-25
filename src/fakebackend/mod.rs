@@ -1,4 +1,5 @@
 use clap::Parser;
+use http::{response, version, HeaderValue};
 use std::{io::Write, net::TcpListener};
 
 #[derive(Parser, Debug)]
@@ -27,13 +28,16 @@ pub fn run() {
 
             while let Ok((mut stream, addr)) = addr.accept() {
                 println!("Incoming from {}", addr);
-                let status_line = "HTTP/1.1 200 OK";
-                let msg = format!("Hello from {}", args.id);
-                let length = msg.len();
+                let msg = &format!("Hello from {}", args.id);
+                let resp = response::Response::builder()
+                    .version(version::Version::HTTP_11)
+                    .header("Content-Length", msg.len())
+                    .header("Content-Type", "text/plain")
+                    .body(msg)
+                    .unwrap();
 
-                let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{msg}");
 
-                stream.write_all(response.as_bytes()).unwrap();
+                stream.write_all(resp.body().as_bytes()).unwrap();
             }
         }
         _ => {
