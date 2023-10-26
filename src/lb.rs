@@ -50,7 +50,16 @@ impl LB {
             thread::sleep(Duration::from_secs(2));
         });
 
-        proxy::bind_tcp_listeners(
+        proxy::accept_tcp(
+            self.conf
+                .address
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
+            Arc::clone(&self.current_healthy_targets),
+            self.conf.targets.clone().unwrap(),
+        )?;
+
+        proxy::accept_http(
             self.conf
                 .address
                 .clone()

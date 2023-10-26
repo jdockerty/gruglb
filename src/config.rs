@@ -5,10 +5,11 @@ use std::{collections::HashMap, fs::File};
 use tracing_subscriber::filter::LevelFilter;
 
 /// Protocol to use against a configured target.
-#[allow(dead_code)]
+#[derive(PartialEq)]
 pub enum Protocol {
     Tcp,
     Http,
+    Unsupported,
 }
 
 // Represents the load balancer configuration.
@@ -40,6 +41,17 @@ pub struct Target {
     /// Backends to route traffic to.
     pub backends: Option<Vec<Backend>>,
     // routing_algorithm: RoutingAlgorithm,
+}
+
+impl Target {
+    /// Retrieve the type of protocol configured for the target.
+    pub fn protocol_type(&self) -> Protocol {
+        match self.protocol.as_str() {
+            "tcp" => Protocol::Tcp,
+            "http" => Protocol::Http,
+            _ => Protocol::Unsupported,
+        }
+    }
 }
 
 // An instance for a backend server that will have traffic routed to.
@@ -112,6 +124,6 @@ mod tests {
 
         assert_eq!(names.len(), 2);
         assert!(names.iter().any(|elem| elem == "webServersA"));
-        assert!(names.iter().any(|elem| elem == "webServersB"));
+        assert!(names.iter().any(|elem| elem == "tcpServersA"));
     }
 }

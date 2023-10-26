@@ -1,6 +1,7 @@
-use crate::config::{Backend, Config, Target};
+use crate::config::{Backend, Config, Protocol, Target};
 use crate::lb::SendTargets;
 use anyhow::Result;
+use std::io::BufReader;
 use std::{
     collections::HashMap,
     io::{Read, Write},
@@ -181,19 +182,76 @@ where
 }
 
 /// Bind to the configured listener ports for incoming TCP connections.
-pub fn bind_tcp_listeners(
+fn get_tcp_listeners(
+    bind_address: String,
+    targets: HashMap<String, Target>,
+) -> Result<Vec<(String, TcpListener)>> {
+    let mut tcp_bindings = vec![];
+
+    for (name, target) in targets {
+        if target.protocol_type() == Protocol::Tcp {
+            let addr = format!("{}:{}", bind_address.clone(), target.listener.unwrap());
+            let listener = TcpListener::bind(&addr)?;
+            info!("Binding to {} for {}", &addr, &name);
+            tcp_bindings.push((name, listener));
+        }
+    }
+
+    Ok(tcp_bindings)
+}
+
+fn get_http_backends() {}
+
+pub fn accept_http(
     bind_address: String,
     current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
     targets: HashMap<String, Target>,
 ) -> Result<()> {
     let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let http_bind = TcpListener::bind(format!("{bind_address}:8080"))?;
 
-    for (name, target) in targets {
-        // Assumes always using TCP for now.
-        let addr = format!("{}:{}", bind_address.clone(), target.listener.unwrap());
-        let listener = TcpListener::bind(&addr)?;
-        info!("Listening on {} for {}", &addr, &name);
+    for stream in http_bind.incoming() {
+        let current_healthy_targets = Arc::clone(&current_healthy_targets);
+        thread::spawn(move || match stream {
+            Ok(mut stream) => {
+                info!("Incoming HTTP request");
+                use std::io::prelude::*;
+                let buf = BufReader::new(&mut stream);
 
+                let http_request: Vec<_> = buf
+                    .lines()
+                    .map(|result| result.unwrap())
+                    .take_while(|line| !line.is_empty())
+                    .collect();
+
+                let info = &http_request[0];
+                let http_info = info.split_whitespace().collect::<Vec<&str>>();
+
+                let method = http_info[0];
+                let path = http_info[1];
+
+                info!("{method} request at {path}");
+            }
+            Err(e) => {
+                error!("Unable to connect: {}", e);
+            }
+        });
+    }
+
+    Ok(())
+}
+
+/// Accept TCP connections by binding to multiple `TcpListener` socket address and
+/// handling incoming connections, passing them to the configured TCP backends.
+pub fn accept_tcp(
+    bind_address: String,
+    current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    targets: HashMap<String, Target>,
+) -> Result<()> {
+    let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let bound_listeners = get_tcp_listeners(bind_address, targets)?;
+
+    for (name, listener) in bound_listeners {
         // Listen to incoming traffic on separate threads
         let idx = Arc::clone(&idx);
         let current_healthy_targets = Arc::clone(&current_healthy_targets);
@@ -220,6 +278,7 @@ pub fn bind_tcp_listeners(
             }
         });
     }
+
     Ok(())
 }
 
