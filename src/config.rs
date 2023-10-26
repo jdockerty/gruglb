@@ -5,7 +5,7 @@ use std::{collections::HashMap, fs::File};
 use tracing_subscriber::filter::LevelFilter;
 
 /// Protocol to use against a configured target.
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Protocol {
     Tcp,
     Http,
@@ -114,16 +114,39 @@ impl Config {
 mod tests {
     use super::*;
 
+    fn get_config() -> Config {
+        let test_config = File::open("tests/fixtures/example-config.yaml").unwrap();
+        let conf = new(test_config).unwrap();
+        conf
+    }
+
     #[test]
     fn named_targets_match() {
-        let test_config = File::open("tests/fixtures/example-config.yaml").unwrap();
-
-        let conf = new(test_config).unwrap();
-
+        let conf = get_config();
         let names = conf.target_names().unwrap();
 
         assert_eq!(names.len(), 2);
         assert!(names.iter().any(|elem| elem == "webServersA"));
         assert!(names.iter().any(|elem| elem == "tcpServersA"));
+    }
+
+    #[test]
+    fn protocol_matches() {
+        let conf = get_config();
+
+        let targets = conf.targets.unwrap();
+
+        let http_target = &targets["webServersA"];
+        let tcp_target = &targets["tcpServersA"];
+
+        let unsupported = Target {
+            protocol: "invalid_protocol".to_string(),
+            listener: None,
+            backends: None,
+        };
+
+        assert_eq!(http_target.protocol_type(), Protocol::Http);
+        assert_eq!(tcp_target.protocol_type(), Protocol::Tcp);
+        assert_eq!(unsupported.protocol_type(), Protocol::Unsupported);
     }
 }
