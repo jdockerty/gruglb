@@ -59,14 +59,14 @@ impl Target {
 pub struct Backend {
     pub host: String,
     pub port: u16,
-    pub healthcheck_path: Option<String>,
+    pub health_path: Option<String>,
 }
 
 impl PartialEq for Backend {
     fn eq(&self, other: &Backend) -> bool {
         self.port == other.port
             && self.host == other.host
-            && self.healthcheck_path == other.healthcheck_path
+            && self.health_path == other.health_path
     }
 }
 
