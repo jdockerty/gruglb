@@ -1,6 +1,7 @@
 use crate::config::{Backend, Config, Protocol, Target};
 use crate::lb::SendTargets;
 use anyhow::Result;
+use reqwest::blocking::Response;
 use std::io::BufReader;
 use std::{
     collections::HashMap,
@@ -13,73 +14,62 @@ use std::{
 };
 use tracing::{debug, error, info};
 
-// HTTP health checks for L7 targets.
-// TODO: refactor common functionality between TCP/HTTP targets.
-//pub fn http_health(conf: Box<Config>) {
-//    let duration = Duration::from_secs(2);
-//    let health_client = reqwest::blocking::Client::builder()
-//        .timeout(Duration::from_secs(1))
-//        .build()
-//        .unwrap();
-//
-//    if let Some(targets) = &conf.targets {
-//        let current_healthy_targets: Arc<Mutex<HashMap<String, Vec<Backend>>>> =
-//            Arc::new(Mutex::new(HashMap::new()));
-//
-//        info!("Starting HTTP health checks");
-//        loop {
-//            debug!("Healthy HTTP {:?}", current_healthy_targets);
-//            for target in targets.values() {
-//                if let Some(backends) = &target.backends {
-//                    for backend in backends {
-//                        let health_uri = &format!(
-//                            "http://{}:{}{}",
-//                            backend.host, backend.port, backend.healthcheck_path
-//                        );
-//                        let mut healthy_targets = match current_healthy_targets.lock() {
-//                            Ok(healthy_targets) => healthy_targets,
-//                            Err(e) => {
-//                                error!("Unable to acquire lock: {e}");
-//                                e.into_inner()
-//                            }
-//                        };
-//                        // Simple blocking call to avoid async functions leaking everywhere.
-//                        match health_client.get(health_uri).send() {
-//                            Ok(response) => {
-//                                if response.status().is_success()
-//                                    || response.status().is_redirection()
-//                                {
-//                                    info!("{health_uri} is healthy backend for {}", target.name);
-//                                }
-//
-//                                if response.status().is_client_error()
-//                                    || response.status().is_server_error()
-//                                {
-//                                    debug!(
-//                                        "{} is unhealthy for {health_uri} ({}), attempting to remove",
-//                                        target.name,
-//                                        response.status()
-//                                    );
-//                                }
-//                            }
-//                            Err(err) => {
-//                                error!(
-//                                    "Unable to health check {health_uri}, attempting to remove {}: {err}",
-//                                    target.name
-//                                );
-//                            }
-//                        }
-//                    }
-//                } else {
-//                    info!("No backends to health check for {}", target.name);
-//                }
-//            }
-//            thread::sleep(duration);
-//        }
-//    } else {
-//        info!("No targets configured, unable to health check.");
-//    }
-//}
+pub fn http_health(conf: Arc<Config>, sender: SendTargets) {
+    let duration = Duration::from_secs(5);
+    let health_client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .build()
+        .unwrap();
+
+    if let Some(targets) = &conf.targets {
+        info!("Starting HTTP health checks");
+        loop {
+            let mut healthy_backends: Vec<Backend> = vec![];
+            let mut healthy_targets = HashMap::new();
+            for (name, target) in targets {
+                if target.protocol_type() != Protocol::Http {
+                    continue;
+                }
+
+                healthy_targets.insert(name.to_string(), healthy_backends.clone());
+                if let Some(backends) = &target.backends {
+                    for backend in backends {
+                        let request_addr = &format!(
+                            "http://{}:{}{}",
+                            backend.host,
+                            backend.port,
+                            backend.health_path.clone().unwrap()
+                        );
+
+                        if let Ok(response) = health_client.get(request_addr).send() {
+                            if response.status().is_success() || response.status().is_redirection()
+                            {
+                                info!("{request_addr} is healthy backend for {}", name);
+                                healthy_backends.push(backend.clone());
+                            }
+                        } else {
+                            // This is "removed from the pool" because it is not included in
+                            // the vector for the next channel transmission, so traffic does not get routed
+                            // to it.
+                            debug!(
+                                "{request_addr} is unhealthy for {}, removing from pool",
+                                name
+                            );
+                        }
+                    }
+                    healthy_targets.insert(name.to_string(), healthy_backends.clone());
+                } else {
+                    info!("No backends to health check for {}", name);
+                }
+            }
+            debug!("[HTTP] Sending targets to channel");
+            sender.send(healthy_targets).unwrap();
+            thread::sleep(duration);
+        }
+    } else {
+        info!("No targets configured, unable to health check.");
+    }
+}
 
 /// Run health checks against the configured TCP targets.
 pub fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
@@ -91,6 +81,9 @@ pub fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
             let mut healthy_backends: Vec<Backend> = vec![];
             let mut healthy_targets = HashMap::new();
             for (name, target) in targets {
+                if target.protocol_type() != Protocol::Tcp {
+                    continue;
+                }
                 healthy_targets.insert(name.to_string(), healthy_backends.clone());
                 if let Some(backends) = &target.backends {
                     for backend in backends {
@@ -181,16 +174,31 @@ where
     Ok(())
 }
 
+/// Helper for creating the relevant HTTP response to write into a `TcpStream`.
+fn construct_response(response: Response) -> Result<String> {
+    let http_version = response.version();
+    let status = response.status();
+    let response_body = response.text()?;
+
+    let status_line = format!("{:?} {} OK", http_version, status);
+    let content_len = format!("Content-Length: {}", response_body.len());
+
+    let response = format!("{status_line}\r\n{content_len}\r\n\r\n{response_body}");
+
+    Ok(response)
+}
+
 pub fn http_connection<S>(
     targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
     target_name: String,
     routing_idx: Arc<Mutex<usize>>,
     method: String,
     request_path: String,
-    mut stream: S,
+    stream: S,
 ) -> Result<()>
 where
     S: Read + Write,
+    TcpStream: std::convert::From<S>,
 {
     if let Some(backends) = targets.read().unwrap().get(&target_name) {
         let backends = backends.to_vec();
@@ -229,14 +237,19 @@ where
         match method.as_str() {
             "GET" => {
                 let backend_response = client.get(http_backend).send()?;
+                let response = construct_response(backend_response)?;
 
-                let version = backend_response.version();
-                debug!("RESP: {:?}", backend_response.text()?);
-                // TODO: Send response back to caller via stream.
+                let mut s = TcpStream::from(stream);
+
+                s.write_all(response.as_bytes())?;
             }
             "POST" => {
-                let response = client.post(http_backend).send()?;
-                stream.write_all(&response.bytes()?)?;
+                let backend_response = client.post(http_backend).send()?;
+                let response = construct_response(backend_response)?;
+
+                let mut s = TcpStream::from(stream);
+
+                s.write_all(response.as_bytes())?;
             }
             _ => {
                 error!("Unsupported: {method}")
