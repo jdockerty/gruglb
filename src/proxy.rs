@@ -140,7 +140,7 @@ where
         let backend_count = backends.len();
 
         if backend_count == 0 {
-            info!("No routable backends for {target_name}, nothing to do");
+            info!("[TCP] No routable backends for {target_name}, nothing to do");
             return Ok(());
         }
 
@@ -149,7 +149,7 @@ where
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        debug!("{backend_count} backends configured for {target_name}, current index {idx}");
+        debug!("[TCP] {backend_count} backends configured for {target_name}, current index {idx}");
 
         // Reset index when out of bounds to route back to the first server.
         if *idx >= backend_count {
@@ -162,7 +162,7 @@ where
         // address.
         *idx += 1;
 
-        info!("Attempting to connect to {}", &backend_addr);
+        info!("[TCP] Attempting to connect to {}", &backend_addr);
         match TcpStream::connect(backend_addr) {
             Ok(mut response) => {
                 let mut buffer = Vec::new();
