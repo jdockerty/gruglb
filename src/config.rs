@@ -64,9 +64,7 @@ pub struct Backend {
 
 impl PartialEq for Backend {
     fn eq(&self, other: &Backend) -> bool {
-        self.port == other.port
-            && self.host == other.host
-            && self.health_path == other.health_path
+        self.port == other.port && self.host == other.host && self.health_path == other.health_path
     }
 }
 
