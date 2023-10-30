@@ -38,12 +38,15 @@ impl LB {
         }
 
         // Provides the health check thread with its own configuration.
-        let health_check_conf = self.conf.clone();
+        let tcp_conf = self.conf.clone();
+        let http_conf = self.conf.clone();
+        let tcp_sender = sender.clone();
+        let http_sender = sender.clone();
         thread::spawn(move || {
-            proxy::tcp_health(health_check_conf.clone(), sender.clone());
-            // TODO: How to run this with the same sender? Potentially not possible and will
-            // require refactor.
-            // proxy::http_health(health_check_conf.clone(), sender.clone());
+            proxy::tcp_health(tcp_conf, tcp_sender);
+        });
+        thread::spawn(move || {
+            proxy::http_health(http_conf, http_sender);
         });
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
