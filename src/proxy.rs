@@ -2,6 +2,7 @@ use crate::config::{Backend, Config, Protocol, Target};
 use crate::lb::SendTargets;
 use anyhow::Result;
 use reqwest::blocking::Response;
+use std::io::prelude::*;
 use std::io::BufReader;
 use std::{
     collections::HashMap,
@@ -236,7 +237,7 @@ where
 
         match method.as_str() {
             "GET" => {
-                let backend_response = client.get(http_backend).send()?;
+                let backend_response = client.get(&http_backend).send()?;
                 let response = construct_response(backend_response)?;
 
                 let mut s = TcpStream::from(stream);
@@ -244,7 +245,7 @@ where
                 s.write_all(response.as_bytes())?;
             }
             "POST" => {
-                let backend_response = client.post(http_backend).send()?;
+                let backend_response = client.post(&http_backend).send()?;
                 let response = construct_response(backend_response)?;
 
                 let mut s = TcpStream::from(stream);
@@ -255,6 +256,7 @@ where
                 error!("Unsupported: {method}")
             }
         }
+        info!("[HTTP] response sent to {}", &http_backend);
     } else {
         info!("[HTTP] No backend configured");
     };
@@ -307,50 +309,51 @@ pub fn accept_http(
     let idx: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
     let bound_listeners = get_http_listeners(bind_address, targets)?;
 
-    for (name, listener) in bound_listeners {
-        for stream in listener.incoming() {
-            let name = name.clone();
-            let idx = Arc::clone(&idx);
-            let current_healthy_targets = Arc::clone(&current_healthy_targets);
-            thread::spawn(move || match stream {
-                Ok(mut stream) => {
-                    info!("Incoming HTTP request");
-                    use std::io::prelude::*;
-                    let buf = BufReader::new(&mut stream);
+    thread::spawn(move || {
+        for (name, listener) in bound_listeners {
+            for stream in listener.incoming() {
+                let name = name.clone();
+                let idx = Arc::clone(&idx);
+                let current_healthy_targets = Arc::clone(&current_healthy_targets);
+                thread::spawn(move || match stream {
+                    Ok(mut stream) => {
+                        info!("Incoming HTTP request");
+                        let buf = BufReader::new(&mut stream);
 
-                    let http_request: Vec<_> = buf
-                        .lines()
-                        .map(|result| result.unwrap())
-                        .take_while(|line| !line.is_empty())
-                        .collect();
+                        let http_request: Vec<_> = buf
+                            .lines()
+                            .map(|result| result.unwrap())
+                            .take_while(|line| !line.is_empty())
+                            .collect();
 
-                    let info = http_request[0].clone();
-                    let http_info = info
-                        .split_whitespace()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>();
+                        let info = http_request[0].clone();
+                        let http_info = info
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>();
 
-                    let method = http_info[0].clone();
-                    let path = http_info[1].clone();
+                        let method = http_info[0].clone();
+                        let path = http_info[1].clone();
 
-                    debug!("{method} request at {path}");
-                    thread::spawn(move || {
-                        http_connection(
-                            current_healthy_targets,
-                            name,
-                            idx,
-                            method.to_string(),
-                            path.to_string(),
-                            stream,
-                        )
-                    });
-                }
-                Err(e) => {
-                    error!("Unable to connect: {}", e);
-                }
-            });
+                        debug!("{method} request at {path}");
+                        thread::spawn(move || {
+                            http_connection(
+                                current_healthy_targets,
+                                name,
+                                idx,
+                                method.to_string(),
+                                path.to_string(),
+                                stream,
+                            )
+                        });
+                    }
+                    Err(e) => {
+                        error!("Unable to connect: {}", e);
+                    }
+                });
+            }
         }
-    }
+    });
 
     Ok(())
 }

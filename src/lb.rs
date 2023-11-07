@@ -55,7 +55,7 @@ impl LB {
             for (target, backends) in receiver.recv().unwrap() {
                 healthy_targets.write().unwrap().insert(target, backends);
             }
-            thread::sleep(Duration::from_secs(2));
+            thread::sleep(Duration::from_millis(500));
         });
 
         proxy::accept_tcp(

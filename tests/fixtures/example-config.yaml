@@ -1,4 +1,3 @@
-logging: debug
 targets:
   tcpServersA:
     protocol: 'tcp'
