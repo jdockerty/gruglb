@@ -20,9 +20,9 @@ pub struct LB {
 
 /// Construct a new instance of gruglb
 pub fn new(conf: Config) -> LB {
-    FmtSubscriber::builder()
+    let _ = FmtSubscriber::builder()
         .with_max_level(conf.log_level())
-        .init();
+        .try_init();
 
     LB {
         conf: Arc::new(conf),
@@ -38,8 +38,16 @@ impl LB {
         }
 
         // Provides the health check thread with its own configuration.
-        let health_check_conf = self.conf.clone();
-        thread::spawn(move || proxy::tcp_health(health_check_conf, sender));
+        let tcp_conf = self.conf.clone();
+        let http_conf = self.conf.clone();
+        let tcp_sender = sender.clone();
+        let http_sender = sender.clone();
+        thread::spawn(move || {
+            proxy::tcp_health(tcp_conf, tcp_sender);
+        });
+        thread::spawn(move || {
+            proxy::http_health(http_conf, http_sender);
+        });
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
@@ -47,10 +55,19 @@ impl LB {
             for (target, backends) in receiver.recv().unwrap() {
                 healthy_targets.write().unwrap().insert(target, backends);
             }
-            thread::sleep(Duration::from_secs(2));
+            thread::sleep(Duration::from_millis(500));
         });
 
-        proxy::bind_tcp_listeners(
+        proxy::accept_tcp(
+            self.conf
+                .address
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
+            Arc::clone(&self.current_healthy_targets),
+            self.conf.targets.clone().unwrap(),
+        )?;
+
+        proxy::accept_http(
             self.conf
                 .address
                 .clone()

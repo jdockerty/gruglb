@@ -19,22 +19,42 @@ struct Cli {
 
 pub fn run() {
     let args = Cli::parse();
-    let protocol = match args.protocol.to_lowercase().as_str() {
-        "http" => "http".to_string(),
-        _ => "tcp".to_string(),
-    };
+    match args.protocol.to_lowercase().as_str() {
+        "http" => {
+            let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).unwrap();
 
-    if protocol == "http" {
-        todo!();
-    } else {
-        let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).unwrap();
+            println!(
+                "[{}] Listening for HTTP requests on {}",
+                args.id,
+                addr.local_addr().unwrap()
+            );
 
-        println!("[{}] Listening on {}", args.id, addr.local_addr().unwrap());
+            while let Ok((mut stream, addr)) = addr.accept() {
+                println!("Incoming from {}", addr);
+                let msg = &format!("Hello from {}", args.id);
+                let status_line = "HTTP/1.1 200 OK";
+                let length = msg.len();
 
-        while let Ok((mut stream, addr)) = addr.accept() {
-            println!("Incoming from {}", addr);
-            let buf = format!("Hello from {}", args.id);
-            stream.write_all(buf.as_bytes()).unwrap();
+                let response =
+                    format!("{status_line}\r\nContent-Length: {length}\nContent-Type: text/plain\r\n\r\n{msg}");
+
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+        }
+        _ => {
+            let addr = TcpListener::bind(format!("127.0.0.1:{}", args.port)).unwrap();
+
+            println!(
+                "[{}] Listening for TCP on {}",
+                args.id,
+                addr.local_addr().unwrap()
+            );
+
+            while let Ok((mut stream, addr)) = addr.accept() {
+                println!("Incoming from {}", addr);
+                let buf = format!("Hello from {}", args.id);
+                stream.write_all(buf.as_bytes()).unwrap();
+            }
         }
     }
 }

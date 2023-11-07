@@ -5,10 +5,11 @@ use std::{collections::HashMap, fs::File};
 use tracing_subscriber::filter::LevelFilter;
 
 /// Protocol to use against a configured target.
-#[allow(dead_code)]
+#[derive(Debug, PartialEq)]
 pub enum Protocol {
     Tcp,
     Http,
+    Unsupported,
 }
 
 // Represents the load balancer configuration.
@@ -42,19 +43,28 @@ pub struct Target {
     // routing_algorithm: RoutingAlgorithm,
 }
 
+impl Target {
+    /// Retrieve the type of protocol configured for the target.
+    pub fn protocol_type(&self) -> Protocol {
+        match self.protocol.as_str() {
+            "tcp" => Protocol::Tcp,
+            "http" => Protocol::Http,
+            _ => Protocol::Unsupported,
+        }
+    }
+}
+
 // An instance for a backend server that will have traffic routed to.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Backend {
     pub host: String,
     pub port: u16,
-    pub healthcheck_path: Option<String>,
+    pub health_path: Option<String>,
 }
 
 impl PartialEq for Backend {
     fn eq(&self, other: &Backend) -> bool {
-        self.port == other.port
-            && self.host == other.host
-            && self.healthcheck_path == other.healthcheck_path
+        self.port == other.port && self.host == other.host && self.health_path == other.health_path
     }
 }
 
@@ -102,16 +112,39 @@ impl Config {
 mod tests {
     use super::*;
 
+    fn get_config() -> Config {
+        let test_config = File::open("tests/fixtures/example-config.yaml").unwrap();
+        let conf = new(test_config).unwrap();
+        conf
+    }
+
     #[test]
     fn named_targets_match() {
-        let test_config = File::open("tests/fixtures/example-config.yaml").unwrap();
-
-        let conf = new(test_config).unwrap();
-
+        let conf = get_config();
         let names = conf.target_names().unwrap();
 
         assert_eq!(names.len(), 2);
         assert!(names.iter().any(|elem| elem == "webServersA"));
-        assert!(names.iter().any(|elem| elem == "webServersB"));
+        assert!(names.iter().any(|elem| elem == "tcpServersA"));
+    }
+
+    #[test]
+    fn protocol_matches() {
+        let conf = get_config();
+
+        let targets = conf.targets.unwrap();
+
+        let http_target = &targets["webServersA"];
+        let tcp_target = &targets["tcpServersA"];
+
+        let unsupported = Target {
+            protocol: "invalid_protocol".to_string(),
+            listener: None,
+            backends: None,
+        };
+
+        assert_eq!(http_target.protocol_type(), Protocol::Http);
+        assert_eq!(tcp_target.protocol_type(), Protocol::Tcp);
+        assert_eq!(unsupported.protocol_type(), Protocol::Unsupported);
     }
 }
