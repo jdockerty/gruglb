@@ -31,7 +31,7 @@ targets:
     # Either TCP or HTTP, defaults to TCP when not set.
     protocol: 'tcp'
 
-    # Listening address, the application binds to multiple ports.
+    # Port to bind to for this target.
     listener: 9090
 
     # Statically defined backend servers.
@@ -53,6 +53,29 @@ targets:
       - host: "127.0.0.1"
         port: 8093
         health_path: "/health"
+```
+
+Using the HTTP bound listener of `8080` as our example, if we send traffic to this we expect to see a response back from our
+configured backends under `webServersA`. In this instance, the `fake_backend` application is already running.
+
+```bash
+# In separate terminal windows (or as background jobs) run the fake backends
+cargo run --bin fake_backend -- --id fake-1 --protocol http --port 8092
+cargo run --bin fake_backend -- --id fake-2 --protocol http --port 8093
+
+# In your main window, run the load balancer
+cargo run --bin gruglb -- --config tests/fixtures/example-config.yaml
+
+# Send some traffic to the load balancer
+for i in {1..5}; do curl localhost:8080; echo; done
+
+# You should have the requests routed in a round-robin fashion to the backends.
+# The output from the above command should look like this
+Hello from fake-2
+Hello from fake-1
+Hello from fake-2
+Hello from fake-1
+Hello from fake-2
 ```
 
 ## Features
