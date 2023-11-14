@@ -79,12 +79,7 @@ pub enum RoutingAlgorithm {
 }
 
 pub fn new(config_file: File) -> Result<Config> {
-    let mut conf: Config = serde_yaml::from_reader(config_file)?;
-
-    if conf.health_check_interval.is_none() {
-        conf.health_check_interval = Some(10);
-    }
-
+    let conf: Config = serde_yaml::from_reader(config_file)?;
     Ok(conf)
 }
 
@@ -165,11 +160,10 @@ mod tests {
     }
 
     #[test]
-    fn default_health_check_interval() {
+    fn health_check_interval() {
         let conf = get_config();
         let config_duration = conf.health_check_interval();
-        assert!(conf.health_check_interval.is_some());
-        assert_eq!(conf.health_check_interval.unwrap(), 10_u8);
-        assert_eq!(config_duration, Duration::from_secs(10));
+        assert_eq!(conf.health_check_interval.unwrap(), 5_u8);
+        assert_eq!(config_duration, Duration::from_secs(5));
     }
 }

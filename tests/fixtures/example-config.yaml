@@ -1,3 +1,4 @@
+health_check_interval: 5
 targets:
   tcpServersA:
     protocol: 'tcp'

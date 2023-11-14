@@ -45,7 +45,7 @@ fn register_healthy_targets() {
     let _ = lb.run(send, recv);
 
     // Wait for some set duration so that the health checks are conducted.
-    thread::sleep(test_config.health_check_interval());
+    thread::sleep(test_config.health_check_interval() * 2);
 
     let tcp_healthy_backends = lb
         .current_healthy_targets
