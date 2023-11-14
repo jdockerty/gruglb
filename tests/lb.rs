@@ -44,7 +44,8 @@ fn register_healthy_targets() {
     let lb = gruglb::lb::new(test_config.clone());
     let _ = lb.run(send, recv);
 
-    // Wait for some set duration so that the health checks are conducted.
+    // Ensure that the health checks run over an interval by waiting double
+    // the configured duration.
     thread::sleep(test_config.health_check_interval() * 2);
 
     let tcp_healthy_backends = lb
