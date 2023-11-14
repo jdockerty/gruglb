@@ -19,6 +19,9 @@ Health checks are conducted at a fixed interval upon the application starting an
 The configuration is defined in YAML, using the `example-config.yaml` that is used for testing, it looks like this:
 
 ```yaml
+# The interval, in seconds, to conduct HTTP/TCP health checks.
+health_check_interval: 5
+
 # Log level information, defaults to 'info'
 logging: info
 
