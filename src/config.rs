@@ -21,6 +21,10 @@ pub struct Config {
     /// Log level of the application, defaults to INFO.
     pub logging: Option<String>,
 
+    /// Interval, in seconds, to conduct health checks against all configured targets.
+    /// Defaults to every 10 seconds when unset.
+    pub health_check_interval: Option<u8>,
+
     /// The configured targets by the user.
     /// This provides a mapping between a convenient name and its
     /// configured targets.
@@ -75,7 +79,12 @@ pub enum RoutingAlgorithm {
 }
 
 pub fn new(config_file: File) -> Result<Config> {
-    let conf: Config = serde_yaml::from_reader(config_file)?;
+    let mut conf: Config = serde_yaml::from_reader(config_file)?;
+
+    if conf.health_check_interval.is_none() {
+        conf.health_check_interval = Some(10);
+    }
+
     Ok(conf)
 }
 
@@ -146,5 +155,12 @@ mod tests {
         assert_eq!(http_target.protocol_type(), Protocol::Http);
         assert_eq!(tcp_target.protocol_type(), Protocol::Tcp);
         assert_eq!(unsupported.protocol_type(), Protocol::Unsupported);
+    }
+
+    #[test]
+    fn default_health_check_interval() {
+        let conf = get_config();
+        assert!(conf.health_check_interval.is_some());
+        assert_eq!(conf.health_check_interval.unwrap(), 10_u8);
     }
 }

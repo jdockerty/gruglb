@@ -13,7 +13,7 @@ fn register_healthy_targets() {
     for n in 0..=3 {
         let pids = pids.clone();
         thread::spawn(move || {
-            let mut cmd = Box::new(Command::cargo_bin("fake_backend").unwrap());
+            let mut cmd = Command::cargo_bin("fake_backend").unwrap();
 
             if n < 2 {
                 cmd.args([
