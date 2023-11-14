@@ -2,7 +2,7 @@ use assert_cmd::prelude::*;
 use gruglb;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::{thread, time::Duration};
+use std::thread;
 
 mod common;
 
@@ -13,7 +13,7 @@ fn register_healthy_targets() {
     for n in 0..=3 {
         let pids = pids.clone();
         thread::spawn(move || {
-            let mut cmd = Box::new(Command::cargo_bin("fake_backend").unwrap());
+            let mut cmd = Command::cargo_bin("fake_backend").unwrap();
 
             if n < 2 {
                 cmd.args([
@@ -41,11 +41,12 @@ fn register_healthy_targets() {
     let test_config = common::test_targets_config();
 
     let (send, recv) = common::get_send_recv();
-    let lb = gruglb::lb::new(test_config);
+    let lb = gruglb::lb::new(test_config.clone());
     let _ = lb.run(send, recv);
 
-    // Wait for some set duration so that the health checks are conducted.
-    thread::sleep(Duration::from_secs(10));
+    // Ensure that the health checks run over an interval by waiting double
+    // the configured duration.
+    thread::sleep(test_config.health_check_interval() * 2);
 
     let tcp_healthy_backends = lb
         .current_healthy_targets

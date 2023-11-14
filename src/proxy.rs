@@ -16,7 +16,6 @@ use std::{
 use tracing::{debug, error, info};
 
 pub fn http_health(conf: Arc<Config>, sender: SendTargets) {
-    let duration = Duration::from_secs(5);
     let health_client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(1))
         .build()
@@ -65,7 +64,7 @@ pub fn http_health(conf: Arc<Config>, sender: SendTargets) {
             }
             debug!("[HTTP] Sending targets to channel");
             sender.send(healthy_targets).unwrap();
-            thread::sleep(duration);
+            thread::sleep(conf.health_check_interval());
         }
     } else {
         info!("No targets configured, unable to health check.");
@@ -74,8 +73,6 @@ pub fn http_health(conf: Arc<Config>, sender: SendTargets) {
 
 /// Run health checks against the configured TCP targets.
 pub fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
-    let duration = Duration::from_secs(5);
-
     if let Some(targets) = &conf.targets {
         info!("Starting TCP health checks");
         loop {
@@ -111,7 +108,7 @@ pub fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
             }
             debug!("Sending targets to channel");
             sender.send(healthy_targets).unwrap();
-            thread::sleep(duration);
+            thread::sleep(conf.health_check_interval());
         }
     } else {
         info!("No targets configured, unable to health check.");

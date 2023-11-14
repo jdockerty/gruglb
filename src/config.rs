@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use std::{collections::HashMap, fs::File};
+use std::{collections::HashMap, fs::File, time::Duration};
 use tracing_subscriber::filter::LevelFilter;
 
 /// Protocol to use against a configured target.
@@ -20,6 +20,10 @@ pub struct Config {
 
     /// Log level of the application, defaults to INFO.
     pub logging: Option<String>,
+
+    /// Interval, in seconds, to conduct health checks against all configured targets.
+    /// Defaults to every 10 seconds when unset.
+    pub health_check_interval: Option<u8>,
 
     /// The configured targets by the user.
     /// This provides a mapping between a convenient name and its
@@ -93,6 +97,7 @@ impl Config {
         }
     }
 
+    /// Utility function for parsing the log level from the configuration.
     pub fn log_level(&self) -> LevelFilter {
         match self
             .logging
@@ -105,6 +110,12 @@ impl Config {
             "DEBUG" => LevelFilter::DEBUG,
             _ => LevelFilter::INFO,
         }
+    }
+
+    /// Retrieve the health_check_interval as a Duration, ready to use within
+    /// the application.
+    pub fn health_check_interval(&self) -> Duration {
+        Duration::from_secs(self.health_check_interval.unwrap_or(5).into())
     }
 }
 
@@ -146,5 +157,13 @@ mod tests {
         assert_eq!(http_target.protocol_type(), Protocol::Http);
         assert_eq!(tcp_target.protocol_type(), Protocol::Tcp);
         assert_eq!(unsupported.protocol_type(), Protocol::Unsupported);
+    }
+
+    #[test]
+    fn health_check_interval() {
+        let conf = get_config();
+        let config_duration = conf.health_check_interval();
+        assert_eq!(conf.health_check_interval.unwrap(), 5_u8);
+        assert_eq!(config_duration, Duration::from_secs(5));
     }
 }

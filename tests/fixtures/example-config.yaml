@@ -1,18 +1,36 @@
+# The interval, in seconds, to conduct HTTP/TCP health checks.
+health_check_interval: 5
+
+# Log level information, defaults to 'info'
+logging: info
+
+# Defined "targets", the key simply acts as a convenient label for various backend
+# servers which are to have traffic routed to them.
 targets:
+
+  # TCP target example
   tcpServersA:
+    # Either TCP or HTTP, defaults to TCP when not set.
     protocol: 'tcp'
+
+    # Port to bind to for this target.
     listener: 9090
+
+    # Statically defined backend servers.
     backends:
       - host: "127.0.0.1"
         port: 8090
       - host: "127.0.0.1"
         port: 8091
+
+  # HTTP target example
   webServersA:
     protocol: 'http'
     listener: 8080
     backends:
       - host: "127.0.0.1"
         port: 8092
+        # A `health_path` is only required for HTTP backends.
         health_path: "/health"
       - host: "127.0.0.1"
         port: 8093
