@@ -115,7 +115,7 @@ impl Config {
     /// Retrieve the health_check_interval as a Duration, ready to use within
     /// the application.
     pub fn health_check_interval(&self) -> Duration {
-        Duration::from_secs(self.health_check_interval.unwrap_or(10).into())
+        Duration::from_secs(self.health_check_interval.unwrap_or(5).into())
     }
 }
 
