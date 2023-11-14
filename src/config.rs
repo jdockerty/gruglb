@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use std::{collections::HashMap, fs::File};
+use std::{collections::HashMap, fs::File, time::Duration};
 use tracing_subscriber::filter::LevelFilter;
 
 /// Protocol to use against a configured target.
@@ -102,6 +102,7 @@ impl Config {
         }
     }
 
+    /// Utility function for parsing the log level from the configuration.
     pub fn log_level(&self) -> LevelFilter {
         match self
             .logging
@@ -114,6 +115,12 @@ impl Config {
             "DEBUG" => LevelFilter::DEBUG,
             _ => LevelFilter::INFO,
         }
+    }
+
+    /// Retrieve the health_check_interval as a Duration, ready to use within
+    /// the application.
+    pub fn health_check_interval(&self) -> Duration {
+        Duration::from_secs(self.health_check_interval.unwrap_or(10).into())
     }
 }
 
@@ -160,7 +167,9 @@ mod tests {
     #[test]
     fn default_health_check_interval() {
         let conf = get_config();
+        let config_duration = conf.health_check_interval();
         assert!(conf.health_check_interval.is_some());
         assert_eq!(conf.health_check_interval.unwrap(), 10_u8);
+        assert_eq!(config_duration, Duration::from_secs(10));
     }
 }
