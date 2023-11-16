@@ -7,6 +7,16 @@ A simplistic L4/L7 load balancer, written in Rust, for [grug brained developers]
 This is largely a toy project and not intended for production use, but also provides a segue into being able to use a simple load balancer without many frills for my own projects and to learn
 about writing more complex systems in Rust.
 
+## Install
+
+Using `cargo` you can run
+
+```bash
+cargo install --git https://github.com/jdockerty/gruglb
+```
+
+This will install both the `gruglb` and `fake_backend` binaries. You can append `--bin gruglb` if you only wish to install the load balancer.
+
 ## How does it work?
 
 Given a number of pre-defined targets which contains various backend servers, `gruglb` will route traffic between them in round-robin fashion.
@@ -63,11 +73,11 @@ configured backends under `webServersA`. In this instance, the `fake_backend` ap
 
 ```bash
 # In separate terminal windows (or as background jobs) run the fake backends
-cargo run --bin fake_backend -- --id fake-1 --protocol http --port 8092
-cargo run --bin fake_backend -- --id fake-2 --protocol http --port 8093
+fake_backend --id fake-1 --protocol http --port 8092
+fake_backend --id fake-2 --protocol http --port 8093
 
 # In your main window, run the load balancer
-cargo run --bin gruglb -- --config tests/fixtures/example-config.yaml
+gruglb --config tests/fixtures/example-config.yaml
 
 # Send some traffic to the load balancer
 for i in {1..5}; do curl localhost:8080; echo; done
