@@ -108,6 +108,8 @@ impl Config {
         {
             "TRACE" => LevelFilter::TRACE,
             "DEBUG" => LevelFilter::DEBUG,
+            "ERROR" => LevelFilter::ERROR,
+            "INFO" => LevelFilter::INFO,
             _ => LevelFilter::INFO,
         }
     }
