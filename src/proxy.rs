@@ -1,6 +1,5 @@
 use crate::config::{Backend, Config, Protocol, Target};
 use crate::lb::SendTargets;
-use crate::{HTTPError, TCPError};
 use anyhow::Result;
 use reqwest::blocking::Response;
 use std::io::prelude::*;
@@ -155,7 +154,7 @@ where
         *idx += 1;
 
         info!("[TCP] Attempting to connect to {}", &backend_addr);
-        match TcpStream::connect(&backend_addr) {
+        match TcpStream::connect(backend_addr) {
             Ok(mut response) => {
                 let mut buffer = Vec::new();
                 response.read_to_end(&mut buffer)?;
@@ -163,10 +162,7 @@ where
                 debug!("TCP stream closed");
             }
             Err(e) => {
-                Err(TCPError::ProxyRequest {
-                    upstream_address: backend_addr.clone(),
-                    source: e,
-                })?;
+                error!("{e}")
             }
         };
     } else {
@@ -177,10 +173,10 @@ where
 }
 
 /// Helper for creating the relevant HTTP response to write into a `TcpStream`.
-fn construct_response(response: Response) -> Result<String, HTTPError> {
+fn construct_response(response: Response) -> Result<String> {
     let http_version = response.version();
     let status = response.status();
-    let response_body = response.text().map_err(HTTPError::InvalidBody)?;
+    let response_body = response.text()?;
 
     let status_line = format!("{:?} {} OK", http_version, status);
     let content_len = format!("Content-Length: {}", response_body.len());
@@ -238,19 +234,12 @@ where
 
         match method.as_str() {
             "GET" => {
-                let backend_response =
-                    client
-                        .get(&http_backend)
-                        .send()
-                        .map_err(|e| HTTPError::ProxyRequest {
-                            upstream_address: http_backend.clone(),
-                            source: e,
-                        })?;
+                let backend_response = client.get(&http_backend).send()?;
                 let response = construct_response(backend_response)?;
 
                 let mut s = TcpStream::from(stream);
 
-                s.write_all(response.as_bytes())?
+                s.write_all(response.as_bytes())?;
             }
             "POST" => {
                 let backend_response = client.post(&http_backend).send()?;
@@ -260,7 +249,9 @@ where
 
                 s.write_all(response.as_bytes())?;
             }
-            _ => Err(HTTPError::UnsupportedMethod(method.to_string()))?,
+            _ => {
+                error!("Unsupported: {method}")
+            }
         }
         info!("[HTTP] response sent to {}", &http_backend);
     } else {
