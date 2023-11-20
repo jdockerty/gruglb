@@ -1,6 +1,6 @@
 use crate::config::{Backend, Config, Protocol, Target};
 use crate::lb::SendTargets;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::blocking::Response;
 use std::io::prelude::*;
 use std::io::BufReader;
@@ -19,7 +19,7 @@ pub fn http_health(conf: Arc<Config>, sender: SendTargets) {
     let health_client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(1))
         .build()
-        .unwrap();
+        .expect("unable to create http health client");
 
     if let Some(targets) = &conf.targets {
         info!("Starting HTTP health checks");
@@ -51,10 +51,7 @@ pub fn http_health(conf: Arc<Config>, sender: SendTargets) {
                             // This is "removed from the pool" because it is not included in
                             // the vector for the next channel transmission, so traffic does not get routed
                             // to it.
-                            debug!(
-                                "{request_addr} is unhealthy for {}, removing from pool",
-                                name
-                            );
+                            debug!("{request_addr} is unhealthy for {name}, removing from pool",);
                         }
                     }
                     healthy_targets.insert(name.to_string(), healthy_backends.clone());
@@ -62,12 +59,12 @@ pub fn http_health(conf: Arc<Config>, sender: SendTargets) {
                     info!("No backends to health check for {}", name);
                 }
             }
-            debug!("[HTTP] Sending targets to channel");
+            info!("[HTTP] Sending targets to channel");
             sender.send(healthy_targets).unwrap();
             thread::sleep(conf.health_check_interval());
         }
     } else {
-        info!("No targets configured, unable to health check.");
+        info!("[HTTP] No targets configured, unable to health check.");
     }
 }
 
@@ -95,10 +92,7 @@ pub fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
                             // This is "removed from the pool" because it is not included in
                             // the vector for the next channel transmission, so traffic does not get routed
                             // to it.
-                            debug!(
-                                "{request_addr} is unhealthy for {}, removing from pool",
-                                name
-                            );
+                            debug!("{request_addr} is unhealthy for {name}, removing from pool",);
                         }
                     }
                     healthy_targets.insert(name.to_string(), healthy_backends.clone());
@@ -106,12 +100,12 @@ pub fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
                     info!("No backends to health check for {}", name);
                 }
             }
-            debug!("Sending targets to channel");
+            info!("[TCP] Sending targets to channel");
             sender.send(healthy_targets).unwrap();
             thread::sleep(conf.health_check_interval());
         }
     } else {
-        info!("No targets configured, unable to health check.");
+        info!("[TCP] No targets configured, unable to health check.");
     }
 }
 
@@ -177,7 +171,6 @@ fn construct_response(response: Response) -> Result<String> {
     let http_version = response.version();
     let status = response.status();
     let response_body = response.text()?;
-
     let status_line = format!("{:?} {} OK", http_version, status);
     let content_len = format!("Content-Length: {}", response_body.len());
 
@@ -234,7 +227,10 @@ where
 
         match method.as_str() {
             "GET" => {
-                let backend_response = client.get(&http_backend).send()?;
+                let backend_response = client
+                    .get(&http_backend)
+                    .send()
+                    .with_context(|| format!("unable to send response to {http_backend}"))?;
                 let response = construct_response(backend_response)?;
 
                 let mut s = TcpStream::from(stream);
@@ -242,7 +238,10 @@ where
                 s.write_all(response.as_bytes())?;
             }
             "POST" => {
-                let backend_response = client.post(&http_backend).send()?;
+                let backend_response = client
+                    .post(&http_backend)
+                    .send()
+                    .with_context(|| format!("unable to send response to {http_backend}"))?;
                 let response = construct_response(backend_response)?;
 
                 let mut s = TcpStream::from(stream);

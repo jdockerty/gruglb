@@ -6,7 +6,7 @@ use std::sync::mpsc::SyncSender;
 use std::sync::{mpsc::Receiver, Arc, RwLock};
 use std::thread;
 use std::time::Duration;
-use tracing::debug;
+use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub type SendTargets = SyncSender<HashMap<String, Vec<Backend>>>;
@@ -51,11 +51,14 @@ impl LB {
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
-        thread::spawn(move || loop {
-            for (target, backends) in receiver.recv().unwrap() {
-                healthy_targets.write().unwrap().insert(target, backends);
+        thread::spawn(move || {
+            info!("Reciving healthy targets");
+            loop {
+                for (target, backends) in receiver.recv().unwrap() {
+                    healthy_targets.write().unwrap().insert(target, backends);
+                }
+                thread::sleep(Duration::from_millis(500));
             }
-            thread::sleep(Duration::from_millis(500));
         });
 
         proxy::accept_tcp(
