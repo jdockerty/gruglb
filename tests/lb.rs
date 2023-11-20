@@ -6,8 +6,8 @@ use std::thread;
 
 mod common;
 
-#[test]
-fn register_healthy_targets() {
+#[tokio::test]
+async fn register_healthy_targets() {
     let pids = Arc::new(Mutex::new(vec![]));
 
     for n in 0..=3 {
@@ -51,7 +51,7 @@ fn register_healthy_targets() {
     let tcp_healthy_backends = lb
         .current_healthy_targets
         .read()
-        .unwrap()
+        .await
         .get("tcpServersA")
         .unwrap()
         .to_owned();
@@ -59,7 +59,7 @@ fn register_healthy_targets() {
     let http_healthy_backends = lb
         .current_healthy_targets
         .read()
-        .unwrap()
+        .await
         .get("webServersA")
         .unwrap()
         .to_owned();
