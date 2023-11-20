@@ -2,14 +2,16 @@ use crate::config::{Backend, Config};
 use crate::proxy;
 use anyhow::Result;
 use std::collections::HashMap;
-use std::sync::mpsc::SyncSender;
-use std::sync::{mpsc::Receiver, Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::RwLock;
+use tokio::task;
 use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
-pub type SendTargets = SyncSender<HashMap<String, Vec<Backend>>>;
+pub type SendTargets = Sender<HashMap<String, Vec<Backend>>>;
 pub type RecvTargets = Receiver<HashMap<String, Vec<Backend>>>;
 
 /// Load balancer application
@@ -32,7 +34,7 @@ pub fn new(conf: Config) -> LB {
 
 impl LB {
     /// Run the application.
-    pub fn run(&self, sender: SendTargets, receiver: RecvTargets) -> Result<()> {
+    pub async fn run(&self, sender: SendTargets, mut receiver: RecvTargets) -> Result<()> {
         if let Some(target_names) = self.conf.target_names() {
             debug!("All loaded targets {:?}", target_names);
         }
@@ -42,20 +44,20 @@ impl LB {
         let http_conf = self.conf.clone();
         let tcp_sender = sender.clone();
         let http_sender = sender.clone();
-        thread::spawn(move || {
-            proxy::tcp_health(tcp_conf, tcp_sender);
+        task::spawn(async move {
+            proxy::tcp_health(tcp_conf, tcp_sender).await;
         });
-        thread::spawn(move || {
-            proxy::http_health(http_conf, http_sender);
+        task::spawn(async move {
+            proxy::http_health(http_conf, http_sender).await;
         });
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
-        thread::spawn(move || {
-            info!("Reciving healthy targets");
+        task::spawn(async move {
+            info!("Receiving healthy targets");
             loop {
-                for (target, backends) in receiver.recv().unwrap() {
-                    healthy_targets.write().unwrap().insert(target, backends);
+                for (target, backends) in receiver.recv().await.unwrap() {
+                    healthy_targets.write().await.insert(target, backends);
                 }
                 thread::sleep(Duration::from_millis(500));
             }
@@ -68,16 +70,18 @@ impl LB {
                 .unwrap_or_else(|| "127.0.0.1".to_string()),
             Arc::clone(&self.current_healthy_targets),
             self.conf.targets.clone().unwrap(),
-        )?;
+        )
+        .await?;
 
-        proxy::accept_http(
-            self.conf
-                .address
-                .clone()
-                .unwrap_or_else(|| "127.0.0.1".to_string()),
-            Arc::clone(&self.current_healthy_targets),
-            self.conf.targets.clone().unwrap(),
-        )?;
+        //proxy::accept_http(
+        //    self.conf
+        //        .address
+        //        .clone()
+        //        .unwrap_or_else(|| "127.0.0.1".to_string()),
+        //    Arc::clone(&self.current_healthy_targets),
+        //    self.conf.targets.clone().unwrap(),
+        //)
+        //.await?;
 
         Ok(())
     }
