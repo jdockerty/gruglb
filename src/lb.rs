@@ -56,8 +56,23 @@ impl LB {
         task::spawn(async move {
             info!("Receiving healthy targets");
             loop {
-                for (target, backends) in receiver.recv().await.unwrap() {
-                    healthy_targets.write().await.insert(target, backends);
+                for (target, recv_backends) in receiver.recv().await.unwrap() {
+                    if let Some(current_backends) = healthy_targets.read().await.get(&target) {
+                        if current_backends.to_owned() == recv_backends {
+                            debug!("Backends for {target} are still the same, nothing to do");
+                            continue;
+                        }
+
+                        let old = healthy_targets
+                            .write()
+                            .await
+                            .insert(target.clone(), recv_backends.clone())
+                            .unwrap();
+                        debug!(
+                            "Updated {} backends from {:?} to {:?}",
+                            target, old, recv_backends
+                        );
+                    }
                 }
                 thread::sleep(Duration::from_millis(500));
             }
@@ -73,15 +88,15 @@ impl LB {
         )
         .await?;
 
-        //proxy::accept_http(
-        //    self.conf
-        //        .address
-        //        .clone()
-        //        .unwrap_or_else(|| "127.0.0.1".to_string()),
-        //    Arc::clone(&self.current_healthy_targets),
-        //    self.conf.targets.clone().unwrap(),
-        //)
-        //.await?;
+        proxy::accept_http(
+            self.conf
+                .address
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
+            Arc::clone(&self.current_healthy_targets),
+            self.conf.targets.clone().unwrap(),
+        )
+        .await?;
 
         Ok(())
     }
