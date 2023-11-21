@@ -58,7 +58,8 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
             }
             info!("[HTTP] Sending targets to channel");
             sender.send(healthy_targets).await.unwrap();
-            thread::sleep(conf.health_check_interval());
+            // thread::sleep(conf.health_check_interval());
+            thread::sleep(Duration::from_millis(500));
         }
     } else {
         info!("[HTTP] No targets configured, unable to health check.");
@@ -99,7 +100,8 @@ pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
             }
             info!("[TCP] Sending targets to channel");
             sender.send(healthy_targets).await.unwrap();
-            thread::sleep(conf.health_check_interval());
+            // thread::sleep(conf.health_check_interval());
+            thread::sleep(Duration::from_millis(500));
         }
     } else {
         info!("[TCP] No targets configured, unable to health check.");
