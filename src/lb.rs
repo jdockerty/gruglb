@@ -55,62 +55,19 @@ impl LB {
 
         // Continually receive from the channel and update our healthy backend state.
         task::spawn(async move {
-            info!("Receiving healthy targets");
-
-            while let Some(msg) = receiver.recv().await {
-                let name = msg.keys();
-                // TODO: health checks come in separately, identify map and update appropriately.
-
-                //                    for key in msg.keys() {
-                //                        match msg.get(key) {
-                //                            Some(recv_backends) => {
-                //                                let old = healthy_targets
-                //                                    .write()
-                //                                    .await
-                //                                    .insert(key.to_string(), recv_backends.clone())
-                //                                    .unwrap();
-                //                                info!("Updated {} backends to {:?}", key, recv_backends);
-                //                            }
-                //                            None => {
-                //                                info!("Updating {key}");
-                //                            }
-                //                        }
-                //                    }
-
-                info!("Received {msg:?}");
+            info!("SPAWNED!");
+            match receiver.recv().await {
+                Some(msg) => {
+                    for target_name in msg.keys() {
+                        let backends = msg.get(target_name).unwrap().to_vec();
+                        healthy_targets
+                            .write()
+                            .await
+                            .insert(target_name.to_string(), backends.clone());
+                    }
+                }
+                None => info!("Nothing to do for"),
             }
-            //loop {
-            //    for (target, recv_backends) in receiver.recv().await {
-            //        info!("{target}, {recv_backends:?}");
-            //        match healthy_targets.read().await.get(&target) {
-            //            Some(current_backends) => {
-            //                if current_backends.to_owned() == recv_backends {
-            //                    info!("Backends for {target} are still the same, nothing to do");
-            //                    break;
-            //                }
-
-            //                let old = healthy_targets
-            //                    .write()
-            //                    .await
-            //                    .insert(target.clone(), recv_backends.clone())
-            //                    .unwrap();
-            //                info!(
-            //                    "Updated {} backends from {:?} to {:?}",
-            //                    target, old, recv_backends
-            //                );
-            //            }
-            //            None => {
-            //                info!("Updating {target} to {recv_backends:?}");
-            //                healthy_targets
-            //                    .write()
-            //                    .await
-            //                    .insert(target.clone(), recv_backends.clone())
-            //                    .unwrap();
-            //            }
-            //        }
-            //    }
-            //    thread::sleep(Duration::from_millis(500));
-            //}
         });
 
         info!("Accepting tcp!");

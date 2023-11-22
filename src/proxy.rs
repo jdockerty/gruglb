@@ -284,49 +284,51 @@ pub async fn accept_http(
     let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
     let bound_listeners = generate_http_listeners(bind_address, targets).await?;
 
-    for (name, listener) in bound_listeners {
-        match listener.accept().await {
-            Ok((mut stream, address)) => {
-                let name = name.clone();
-                let idx = Arc::clone(&idx);
-                let current_healthy_targets = Arc::clone(&current_healthy_targets);
-                info!("Incoming HTTP request from {address}");
-                let buf = BufReader::new(&mut stream);
-                let mut lines = buf.lines();
-                let mut http_request: Vec<String> = vec![];
+    tokio::spawn(async move {
+        for (name, listener) in bound_listeners {
+            match listener.accept().await {
+                Ok((mut stream, address)) => {
+                    let name = name.clone();
+                    let idx = Arc::clone(&idx);
+                    let current_healthy_targets = Arc::clone(&current_healthy_targets);
+                    info!("Incoming HTTP request from {address}");
+                    let buf = BufReader::new(&mut stream);
+                    let mut lines = buf.lines();
+                    let mut http_request: Vec<String> = vec![];
 
-                while let Some(line) = lines.next_line().await? {
-                    if line.is_empty() {
-                        break;
+                    while let Some(line) = lines.next_line().await.unwrap() {
+                        if line.is_empty() {
+                            break;
+                        }
+                        http_request.push(line);
                     }
-                    http_request.push(line);
+
+                    let info = http_request[0].clone();
+                    let http_info = info
+                        .split_whitespace()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>();
+
+                    let method = http_info[0].clone();
+                    let path = http_info[1].clone();
+                    tokio::spawn(async move {
+                        debug!("{method} request at {path}");
+                        http_connection(
+                            current_healthy_targets,
+                            name,
+                            idx,
+                            method.to_string(),
+                            path.to_string(),
+                            stream,
+                        )
+                        .await
+                        .unwrap();
+                    });
                 }
-
-                let info = http_request[0].clone();
-                let http_info = info
-                    .split_whitespace()
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>();
-
-                let method = http_info[0].clone();
-                let path = http_info[1].clone();
-                tokio::spawn(async move {
-                    debug!("{method} request at {path}");
-                    http_connection(
-                        current_healthy_targets,
-                        name,
-                        idx,
-                        method.to_string(),
-                        path.to_string(),
-                        stream,
-                    )
-                    .await
-                    .unwrap();
-                });
-            }
-            Err(e) => error!("{e}"),
-        };
-    }
+                Err(e) => error!("{e}"),
+            };
+        }
+    });
 
     Ok(())
 }
@@ -341,28 +343,31 @@ pub async fn accept_tcp(
     let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
     let bound_listeners = generate_tcp_listeners(bind_address, targets).await?;
 
-    for (name, listener) in bound_listeners {
-        // Listen to incoming traffic on separate threads
-        let idx = Arc::clone(&idx);
-        let current_healthy_targets = Arc::clone(&current_healthy_targets);
-
-        while let Ok((stream, remote_peer)) = listener.accept().await {
-            info!("Incoming request on {remote_peer}");
-
+    tokio::spawn(async move {
+        for (name, listener) in bound_listeners {
+            // Listen to incoming traffic on separate threads
             let idx = Arc::clone(&idx);
-            let tcp_targets = Arc::clone(&current_healthy_targets);
-            // Pass the TCP streams over to separate threads to avoid
-            // blocking and give each thread its copy of the configuration.
-            let target_name = name.clone();
+            let current_healthy_targets = Arc::clone(&current_healthy_targets);
 
-            tokio::spawn(async move {
-                tcp_connection(tcp_targets, target_name, idx, stream)
-                    .await
-                    .unwrap();
-            })
-            .await?;
+            while let Ok((stream, remote_peer)) = listener.accept().await {
+                info!("Incoming request on {remote_peer}");
+
+                let idx = Arc::clone(&idx);
+                let tcp_targets = Arc::clone(&current_healthy_targets);
+                // Pass the TCP streams over to separate threads to avoid
+                // blocking and give each thread its copy of the configuration.
+                let target_name = name.clone();
+
+                tokio::spawn(async move {
+                    tcp_connection(tcp_targets, target_name, idx, stream)
+                        .await
+                        .unwrap();
+                })
+                .await
+                .unwrap();
+            }
         }
-    }
+    });
 
     Ok(())
 }
