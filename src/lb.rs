@@ -3,12 +3,11 @@ use crate::proxy;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use tokio::task;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub type SendTargets = Sender<HashMap<String, Vec<Backend>>>;
