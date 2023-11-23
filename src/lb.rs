@@ -55,18 +55,31 @@ impl LB {
 
         // Continually receive from the channel and update our healthy backend state.
         task::spawn(async move {
-            info!("SPAWNED!");
-            match receiver.recv().await {
-                Some(msg) => {
-                    for target_name in msg.keys() {
-                        let backends = msg.get(target_name).unwrap().to_vec();
-                        healthy_targets
-                            .write()
-                            .await
-                            .insert(target_name.to_string(), backends.clone());
+            let wait = || tokio::time::sleep(Duration::from_millis(500));
+            loop {
+                match receiver.recv().await {
+                    Some(msg) => {
+                        for target_name in msg.keys() {
+                            let backends = msg.get(target_name).unwrap().to_vec();
+                            if let Some(old) = healthy_targets
+                                .write()
+                                .await
+                                .insert(target_name.to_string(), backends.clone())
+                            {
+                                if old == backends {
+                                    info!("Backends for {target_name} unchanged, waiting for next cycle.");
+                                    wait().await;
+                                    continue;
+                                }
+                                info!("Updated {target_name} from {old:?} to {backends:?}");
+                            } else {
+                                info!("Updated {target_name} with {backends:?}");
+                            }
+                        }
                     }
+                    None => info!("Nothing to do, waiting for next receive cycle."),
                 }
-                None => info!("Nothing to do for"),
+                wait().await
             }
         });
 

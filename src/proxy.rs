@@ -286,47 +286,44 @@ pub async fn accept_http(
 
     tokio::spawn(async move {
         for (name, listener) in bound_listeners {
-            match listener.accept().await {
-                Ok((mut stream, address)) => {
-                    let name = name.clone();
-                    let idx = Arc::clone(&idx);
-                    let current_healthy_targets = Arc::clone(&current_healthy_targets);
-                    info!("Incoming HTTP request from {address}");
-                    let buf = BufReader::new(&mut stream);
-                    let mut lines = buf.lines();
-                    let mut http_request: Vec<String> = vec![];
+            while let Ok((mut stream, address)) = listener.accept().await {
+                let name = name.clone();
+                let idx = Arc::clone(&idx);
+                let current_healthy_targets = Arc::clone(&current_healthy_targets);
+                info!("Incoming HTTP request from {address}");
+                let buf = BufReader::new(&mut stream);
+                let mut lines = buf.lines();
+                let mut http_request: Vec<String> = vec![];
 
-                    while let Some(line) = lines.next_line().await.unwrap() {
-                        if line.is_empty() {
-                            break;
-                        }
-                        http_request.push(line);
+                while let Some(line) = lines.next_line().await.unwrap() {
+                    if line.is_empty() {
+                        break;
                     }
-
-                    let info = http_request[0].clone();
-                    let http_info = info
-                        .split_whitespace()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>();
-
-                    let method = http_info[0].clone();
-                    let path = http_info[1].clone();
-                    tokio::spawn(async move {
-                        debug!("{method} request at {path}");
-                        http_connection(
-                            current_healthy_targets,
-                            name,
-                            idx,
-                            method.to_string(),
-                            path.to_string(),
-                            stream,
-                        )
-                        .await
-                        .unwrap();
-                    });
+                    http_request.push(line);
                 }
-                Err(e) => error!("{e}"),
-            };
+
+                let info = http_request[0].clone();
+                let http_info = info
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>();
+
+                let method = http_info[0].clone();
+                let path = http_info[1].clone();
+                tokio::spawn(async move {
+                    info!("{method} request at {path}");
+                    http_connection(
+                        current_healthy_targets,
+                        name,
+                        idx,
+                        method.to_string(),
+                        path.to_string(),
+                        stream,
+                    )
+                    .await
+                    .unwrap();
+                });
+            }
         }
     });
 
@@ -343,12 +340,12 @@ pub async fn accept_tcp(
     let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
     let bound_listeners = generate_tcp_listeners(bind_address, targets).await?;
 
-    tokio::spawn(async move {
-        for (name, listener) in bound_listeners {
-            // Listen to incoming traffic on separate threads
-            let idx = Arc::clone(&idx);
-            let current_healthy_targets = Arc::clone(&current_healthy_targets);
+    for (name, listener) in bound_listeners {
+        // Listen to incoming traffic on separate threads
+        let idx = Arc::clone(&idx);
+        let current_healthy_targets = Arc::clone(&current_healthy_targets);
 
+        tokio::spawn(async move {
             while let Ok((stream, remote_peer)) = listener.accept().await {
                 info!("Incoming request on {remote_peer}");
 
@@ -366,8 +363,8 @@ pub async fn accept_tcp(
                 .await
                 .unwrap();
             }
-        }
-    });
+        });
+    }
 
     Ok(())
 }

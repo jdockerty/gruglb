@@ -28,16 +28,13 @@ impl Drop for P {
 
 #[tokio::test]
 async fn register_healthy_targets() {
-    println!("Running");
     let p = P {
         pids: Arc::new(Mutex::new(vec![])),
     };
 
     for n in 0..=3 {
-        println!("{n}");
         let pids = p.pids.clone();
         thread::spawn(move || {
-            println!("Spawned");
             let mut cmd = Command::cargo_bin("fake_backend").unwrap();
 
             if n < 2 {
@@ -69,13 +66,13 @@ async fn register_healthy_targets() {
 
     let (send, recv) = common::get_send_recv();
     let lb = gruglb::lb::new(test_config.clone());
-    let _ = lb.run(send, recv).await;
+    let _ = lb.run(send, recv).await.unwrap();
 
     let wait_duration = test_config.health_check_interval() * 2;
 
     // Ensure that the health checks run over an interval by waiting double
     // the configured duration.
-    thread::sleep(wait_duration);
+    tokio::time::sleep(wait_duration).await;
 
     let tcp_healthy_backends = lb
         .current_healthy_targets
@@ -93,6 +90,14 @@ async fn register_healthy_targets() {
         .unwrap()
         .to_owned();
 
-    assert_eq!(http_healthy_backends.len(), 2);
-    assert_eq!(tcp_healthy_backends.len(), 2);
+    assert_eq!(
+        tcp_healthy_backends.len(),
+        2,
+        "TCP healthy backends was {tcp_healthy_backends:?}"
+    );
+    assert_eq!(
+        http_healthy_backends.len(),
+        2,
+        "HTTP healthy backends was {http_healthy_backends:?}"
+    );
 }
