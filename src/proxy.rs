@@ -168,6 +168,7 @@ async fn construct_response(response: Response) -> Result<String> {
 }
 
 pub async fn http_connection(
+    client: Arc<reqwest::Client>,
     targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
     target_name: String,
     routing_idx: Arc<RwLock<usize>>,
@@ -204,7 +205,6 @@ pub async fn http_connection(
         *idx += 1;
 
         info!("[HTTP] Attempting to connect to {}", &http_backend);
-        let client = reqwest::Client::new();
 
         match method.as_str() {
             "GET" => {
@@ -277,6 +277,7 @@ async fn generate_http_listeners(
 }
 
 pub async fn accept_http(
+    client: Arc<reqwest::Client>,
     bind_address: String,
     current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
     targets: HashMap<String, Target>,
@@ -287,6 +288,7 @@ pub async fn accept_http(
     tokio::spawn(async move {
         for (name, listener) in bound_listeners {
             while let Ok((mut stream, address)) = listener.accept().await {
+                let client = client.clone();
                 let name = name.clone();
                 let idx = Arc::clone(&idx);
                 let current_healthy_targets = Arc::clone(&current_healthy_targets);
@@ -311,8 +313,10 @@ pub async fn accept_http(
                 let method = http_info[0].clone();
                 let path = http_info[1].clone();
                 tokio::spawn(async move {
+                    let client = client.clone();
                     info!("{method} request at {path}");
                     http_connection(
+                        client,
                         current_healthy_targets,
                         name,
                         idx,

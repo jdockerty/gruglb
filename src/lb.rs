@@ -94,7 +94,9 @@ impl LB {
         .await?;
 
         info!("Accepting http!");
+        let http_client = Arc::new(reqwest::Client::new());
         proxy::accept_http(
+            http_client,
             self.conf
                 .address
                 .clone()
