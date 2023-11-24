@@ -3,7 +3,6 @@ use crate::proxy;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use tokio::task;
@@ -54,7 +53,6 @@ impl LB {
 
         // Continually receive from the channel and update our healthy backend state.
         task::spawn(async move {
-            let wait = || tokio::time::sleep(Duration::from_millis(250));
             loop {
                 match receiver.recv().await {
                     Some(msg) => {
@@ -66,8 +64,7 @@ impl LB {
                                 .insert(target_name.to_string(), backends.clone())
                             {
                                 if old == backends {
-                                    info!("Backends for {target_name} unchanged, waiting for next cycle.");
-                                    wait().await;
+                                    info!("Backends for {target_name} unchanged.");
                                     continue;
                                 }
                                 info!("Updated {target_name} from {old:?} to {backends:?}");
@@ -78,7 +75,6 @@ impl LB {
                     }
                     None => info!("Nothing to do, waiting for next receive cycle."),
                 }
-                wait().await
             }
         });
 
