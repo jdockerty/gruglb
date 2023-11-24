@@ -12,8 +12,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
-fn health_check_wait(time: Duration) {
-    thread::sleep(time);
+fn health_check_wait(d: Duration) {
+    thread::sleep(d);
 }
 
 pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
@@ -42,17 +42,17 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
                             backend.health_path.clone().unwrap()
                         );
 
-                        if let Ok(response) = health_client.get(request_addr).send().await {
-                            if response.status().is_success() || response.status().is_redirection()
-                            {
+                        match health_client.get(request_addr).send().await {
+                            Ok(_response) => {
                                 info!("{request_addr} is healthy backend for {}", name);
                                 healthy_backends.push(backend.clone());
                             }
-                        } else {
-                            // This is "removed from the pool" because it is not included in
-                            // the vector for the next channel transmission, so traffic does not get routed
-                            // to it.
-                            debug!("{request_addr} is unhealthy for {name}, removing from pool",);
+                            Err(e) => {
+                                // This is "removed from the pool" because it is not included in
+                                // the vector for the next channel transmission, so traffic does not get routed
+                                // to it.
+                                error!("{request_addr} is unhealthy for {name}, removing from pool: {e}",);
+                            }
                         }
                     }
                     healthy_targets.insert(name.to_string(), healthy_backends.clone());
