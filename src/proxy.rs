@@ -17,10 +17,7 @@ fn health_check_wait(d: Duration) {
 }
 
 pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
-    let health_client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(1))
-        .build()
-        .expect("unable to create http health client");
+    let health_client = reqwest::Client::new();
 
     if let Some(targets) = &conf.targets {
         loop {
