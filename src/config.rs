@@ -165,7 +165,7 @@ mod tests {
     fn health_check_interval() {
         let conf = get_config();
         let config_duration = conf.health_check_interval();
-        assert_eq!(conf.health_check_interval.unwrap(), 5_u8);
-        assert_eq!(config_duration, Duration::from_secs(5));
+        assert_eq!(conf.health_check_interval.unwrap(), 2_u8);
+        assert_eq!(config_duration, Duration::from_secs(2));
     }
 }

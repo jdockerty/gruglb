@@ -68,10 +68,9 @@ async fn register_healthy_targets() {
     let lb = gruglb::lb::new(test_config.clone());
     let _ = lb.run(send, recv).await.unwrap();
 
-    let wait_duration = test_config.health_check_interval() * 2;
-
-    // Ensure that the health checks run over an interval by waiting double
-    // the configured duration.
+    // Ensure that the health checks run over multiple cycles by waiting more
+    // than the configured duration.
+    let wait_duration = test_config.health_check_interval() * 10;
     tokio::time::sleep(wait_duration).await;
 
     let tcp_healthy_backends = lb

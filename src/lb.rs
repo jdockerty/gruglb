@@ -54,7 +54,7 @@ impl LB {
 
         // Continually receive from the channel and update our healthy backend state.
         task::spawn(async move {
-            let wait = || tokio::time::sleep(Duration::from_millis(500));
+            let wait = || tokio::time::sleep(Duration::from_millis(250));
             loop {
                 match receiver.recv().await {
                     Some(msg) => {

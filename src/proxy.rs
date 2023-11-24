@@ -12,6 +12,10 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
+fn health_check_wait(time: Duration) {
+    thread::sleep(time);
+}
+
 pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
     let health_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(1))
@@ -19,8 +23,8 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
         .expect("unable to create http health client");
 
     if let Some(targets) = &conf.targets {
-        info!("Starting HTTP health checks");
         loop {
+            info!("Starting HTTP health checks");
             let mut healthy_backends: Vec<Backend> = vec![];
             let mut healthy_targets = HashMap::new();
             for (name, target) in targets {
@@ -58,8 +62,7 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
             }
             info!("[HTTP] Sending targets to channel");
             sender.send(healthy_targets).await.unwrap();
-            // thread::sleep(conf.health_check_interval());
-            thread::sleep(Duration::from_millis(500));
+            health_check_wait(conf.health_check_interval());
         }
     } else {
         info!("[HTTP] No targets configured, unable to health check.");
@@ -69,8 +72,8 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
 /// Run health checks against the configured TCP targets.
 pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
     if let Some(targets) = &conf.targets {
-        info!("Starting TCP health checks");
         loop {
+            info!("Starting TCP health checks");
             let mut healthy_backends: Vec<Backend> = vec![];
             let mut healthy_targets = HashMap::new();
             for (name, target) in targets {
@@ -100,8 +103,7 @@ pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
             }
             info!("[TCP] Sending targets to channel");
             sender.send(healthy_targets).await.unwrap();
-            // thread::sleep(conf.health_check_interval());
-            thread::sleep(Duration::from_millis(500));
+            health_check_wait(conf.health_check_interval());
         }
     } else {
         info!("[TCP] No targets configured, unable to health check.");
@@ -288,7 +290,6 @@ pub async fn accept_http(
     tokio::spawn(async move {
         for (name, listener) in bound_listeners {
             while let Ok((mut stream, address)) = listener.accept().await {
-                let client = client.clone();
                 let name = name.clone();
                 let idx = Arc::clone(&idx);
                 let current_healthy_targets = Arc::clone(&current_healthy_targets);
@@ -312,8 +313,8 @@ pub async fn accept_http(
 
                 let method = http_info[0].clone();
                 let path = http_info[1].clone();
+                let client = client.clone();
                 tokio::spawn(async move {
-                    let client = client.clone();
                     info!("{method} request at {path}");
                     http_connection(
                         client,
