@@ -11,6 +11,6 @@ pub fn test_targets_config() -> config::Config {
 }
 
 pub fn get_send_recv() -> (SendTargets, RecvTargets) {
-    let (send, recv): (SendTargets, RecvTargets) = channel(2);
+    let (send, recv): (SendTargets, RecvTargets) = channel(1);
     (send, recv)
 }

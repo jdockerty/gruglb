@@ -39,7 +39,6 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
                     continue;
                 }
 
-                // healthy_targets.insert(name.to_string(), healthy_backends.clone());
                 if let Some(backends) = &target.backends {
                     for backend in backends {
                         let request_addr = &format!(
@@ -53,6 +52,7 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
                             Ok(_response) => {
                                 info!("{request_addr} is healthy backend for {}", name);
                                 info!("[HTTP] Sending success to channel");
+
                                 sender
                                     .send(Health::Success(CheckState {
                                         target_name: name.to_string(),
@@ -61,11 +61,8 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
                                     .await
                                     .unwrap();
                             }
-                            Err(e) => {
-                                // This is "removed from the pool" because it is not included in
-                                // the vector for the next channel transmission, so traffic does not get routed
-                                // to it.
-                                error!("{request_addr} is unhealthy for {name}, removing from pool: {e}",);
+                            Err(_) => {
+                                info!("({name}, {request_addr}) is unhealthy, removing from pool");
                                 info!("[HTTP] Sending failure to channel");
                                 sender
                                     .send(Health::Failure(CheckState {
@@ -77,7 +74,6 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
                             }
                         }
                     }
-                    // healthy_targets.insert(name.to_string(), healthy_backends.clone());
                 } else {
                     info!("No backends to health check for {}", name);
                 }
@@ -115,6 +111,7 @@ pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
                                 .unwrap();
                             // healthy_backends.push(backend.clone());
                         } else {
+                            info!("({name}, {request_addr}) is unhealthy, removing from pool");
                             // This is "removed from the pool" because it is not included in
                             // the vector for the next channel transmission, so traffic does not get routed
                             // to it.
@@ -125,7 +122,6 @@ pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
                                 }))
                                 .await
                                 .unwrap();
-                            debug!("{request_addr} is unhealthy for {name}, removing from pool",);
                         }
                     }
                 } else {

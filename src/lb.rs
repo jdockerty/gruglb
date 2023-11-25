@@ -73,10 +73,17 @@ impl LB {
                                 );
                             } else {
                                 backends.push(state.backend);
-                                healthy_targets
-                                    .write()
-                                    .await
-                                    .insert(state.target_name, backends);
+
+                                if let Ok(mut healthy_targets) = healthy_targets.try_write() {
+                                    healthy_targets.insert(state.target_name, backends);
+                                } else {
+                                    info!(
+                                        "Unable to acquire write lock for {}, moving to next cycle",
+                                        state.target_name
+                                    );
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(250))
+                                        .await;
+                                }
                             };
                         }
                     }
@@ -87,10 +94,17 @@ impl LB {
                             if let Some(idx) = backends.iter().position(|b| b == &state.backend) {
                                 let _ = backends.remove(idx);
                                 info!("Updating {} with {:?}", state.target_name, backends);
-                                healthy_targets
-                                    .write()
-                                    .await
-                                    .insert(state.target_name, backends);
+                                if let Ok(mut healthy_targets) = healthy_targets.try_write() {
+                                    healthy_targets.insert(state.target_name, backends);
+                                } else {
+                                    info!(
+                                        "Unable to acquire write lock for {}, moving to next cycle",
+                                        state.target_name
+                                    );
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(250))
+                                        .await;
+                                    continue;
+                                }
                             } else {
                                 info!("{:?} is not in healthy target mapping for {}, nothing to remove", state.backend, state.target_name);
                             };
