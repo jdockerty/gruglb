@@ -16,20 +16,30 @@ fn health_check_wait(d: Duration) {
     thread::sleep(d);
 }
 
+#[derive(Debug)]
+pub struct CheckState {
+    pub target_name: String,
+    pub backend: Backend,
+}
+
+#[derive(Debug)]
+pub enum Health {
+    Success(CheckState),
+    Failure(CheckState),
+}
+
 pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
     let health_client = reqwest::Client::new();
 
     if let Some(targets) = &conf.targets {
         loop {
             info!("Starting HTTP health checks");
-            let mut healthy_backends: Vec<Backend> = vec![];
-            let mut healthy_targets = HashMap::new();
             for (name, target) in targets {
                 if target.protocol_type() != Protocol::Http {
                     continue;
                 }
 
-                healthy_targets.insert(name.to_string(), healthy_backends.clone());
+                // healthy_targets.insert(name.to_string(), healthy_backends.clone());
                 if let Some(backends) = &target.backends {
                     for backend in backends {
                         let request_addr = &format!(
@@ -42,23 +52,36 @@ pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
                         match health_client.get(request_addr).send().await {
                             Ok(_response) => {
                                 info!("{request_addr} is healthy backend for {}", name);
-                                healthy_backends.push(backend.clone());
+                                info!("[HTTP] Sending success to channel");
+                                sender
+                                    .send(Health::Success(CheckState {
+                                        target_name: name.to_string(),
+                                        backend: backend.clone(),
+                                    }))
+                                    .await
+                                    .unwrap();
                             }
                             Err(e) => {
                                 // This is "removed from the pool" because it is not included in
                                 // the vector for the next channel transmission, so traffic does not get routed
                                 // to it.
                                 error!("{request_addr} is unhealthy for {name}, removing from pool: {e}",);
+                                info!("[HTTP] Sending failure to channel");
+                                sender
+                                    .send(Health::Failure(CheckState {
+                                        target_name: name.to_string(),
+                                        backend: backend.clone(),
+                                    }))
+                                    .await
+                                    .unwrap();
                             }
                         }
                     }
-                    healthy_targets.insert(name.to_string(), healthy_backends.clone());
+                    // healthy_targets.insert(name.to_string(), healthy_backends.clone());
                 } else {
                     info!("No backends to health check for {}", name);
                 }
             }
-            info!("[HTTP] Sending targets to channel");
-            sender.send(healthy_targets).await.unwrap();
             health_check_wait(conf.health_check_interval());
         }
     } else {
@@ -71,13 +94,11 @@ pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
     if let Some(targets) = &conf.targets {
         loop {
             info!("Starting TCP health checks");
-            let mut healthy_backends: Vec<Backend> = vec![];
-            let mut healthy_targets = HashMap::new();
             for (name, target) in targets {
                 if target.protocol_type() != Protocol::Tcp {
                     continue;
                 }
-                healthy_targets.insert(name.to_string(), healthy_backends.clone());
+                // healthy_targets.insert(name.to_string(), healthy_backends.clone());
                 if let Some(backends) = &target.backends {
                     for backend in backends {
                         let request_addr = &format!("{}:{}", backend.host, backend.port);
@@ -85,21 +106,33 @@ pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
                         if let Ok(mut stream) = TcpStream::connect(request_addr).await {
                             stream.shutdown().await.unwrap();
                             info!("{request_addr} is healthy backend for {}", name);
-                            healthy_backends.push(backend.clone());
+                            sender
+                                .send(Health::Success(CheckState {
+                                    target_name: name.to_string(),
+                                    backend: backend.clone(),
+                                }))
+                                .await
+                                .unwrap();
+                            // healthy_backends.push(backend.clone());
                         } else {
                             // This is "removed from the pool" because it is not included in
                             // the vector for the next channel transmission, so traffic does not get routed
                             // to it.
+                            sender
+                                .send(Health::Failure(CheckState {
+                                    target_name: name.to_string(),
+                                    backend: backend.clone(),
+                                }))
+                                .await
+                                .unwrap();
                             debug!("{request_addr} is unhealthy for {name}, removing from pool",);
                         }
                     }
-                    healthy_targets.insert(name.to_string(), healthy_backends.clone());
                 } else {
                     info!("No backends to health check for {}", name);
                 }
             }
             info!("[TCP] Sending targets to channel");
-            sender.send(healthy_targets).await.unwrap();
             health_check_wait(conf.health_check_interval());
         }
     } else {

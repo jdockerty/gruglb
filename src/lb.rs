@@ -1,5 +1,5 @@
 use crate::config::{Backend, Config};
-use crate::proxy;
+use crate::proxy::{self, Health};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,8 +9,8 @@ use tokio::task;
 use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
-pub type SendTargets = Sender<HashMap<String, Vec<Backend>>>;
-pub type RecvTargets = Receiver<HashMap<String, Vec<Backend>>>;
+pub type SendTargets = Sender<Health>;
+pub type RecvTargets = Receiver<Health>;
 
 /// Load balancer application
 #[derive(Debug)]
@@ -52,28 +52,50 @@ impl LB {
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
+        // Initialise the targets to avoid deadlocks on startup.
+        let init_conf = self.conf.clone();
         task::spawn(async move {
-            loop {
-                match receiver.recv().await {
-                    Some(msg) => {
-                        for target_name in msg.keys() {
-                            let backends = msg.get(target_name).unwrap().to_vec();
-                            if let Some(old) = healthy_targets
-                                .write()
-                                .await
-                                .insert(target_name.to_string(), backends.clone())
-                            {
-                                if old == backends {
-                                    info!("Backends for {target_name} unchanged.");
-                                    continue;
-                                }
-                                info!("Updated {target_name} from {old:?} to {backends:?}");
+            info!("Initialising targets");
+            for k in init_conf.targets.clone().unwrap().keys() {
+                healthy_targets.write().await.insert(k.to_string(), vec![]);
+            }
+
+            while let Some(msg) = receiver.recv().await {
+                match msg {
+                    Health::Success(state) => {
+                        if let Some(backends) = healthy_targets.read().await.get(&state.target_name)
+                        {
+                            let mut backends = backends.to_vec();
+                            if let Some(_idx) = backends.iter().position(|b| b == &state.backend) {
+                                info!(
+                                    "Backend for {} already healthy, nothing to do",
+                                    state.target_name
+                                );
                             } else {
-                                info!("Updated {target_name} with {backends:?}");
-                            }
+                                backends.push(state.backend);
+                                healthy_targets
+                                    .write()
+                                    .await
+                                    .insert(state.target_name, backends);
+                            };
                         }
                     }
-                    None => info!("Nothing to do, waiting for next receive cycle."),
+                    Health::Failure(state) => {
+                        if let Some(backends) = healthy_targets.read().await.get(&state.target_name)
+                        {
+                            let mut backends = backends.to_vec();
+                            if let Some(idx) = backends.iter().position(|b| b == &state.backend) {
+                                let _ = backends.remove(idx);
+                                info!("Updating {} with {:?}", state.target_name, backends);
+                                healthy_targets
+                                    .write()
+                                    .await
+                                    .insert(state.target_name, backends);
+                            } else {
+                                info!("{:?} is not in healthy target mapping for {}, nothing to remove", state.backend, state.target_name);
+                            };
+                        }
+                    }
                 }
             }
         });
