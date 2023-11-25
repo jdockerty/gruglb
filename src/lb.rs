@@ -1,10 +1,9 @@
 use crate::config::{Backend, Config};
 use crate::proxy::{self, Health};
 use anyhow::Result;
-use std::collections::HashMap;
+use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::RwLock;
 use tokio::task;
 use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
@@ -16,7 +15,7 @@ pub type RecvTargets = Receiver<Health>;
 #[derive(Debug)]
 pub struct LB {
     pub conf: Arc<Config>,
-    pub current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    pub current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
 }
 
 /// Construct a new instance of gruglb
@@ -27,7 +26,7 @@ pub fn new(conf: Config) -> LB {
 
     LB {
         conf: Arc::new(conf),
-        current_healthy_targets: Arc::new(RwLock::new(HashMap::new())),
+        current_healthy_targets: Arc::new(DashMap::new()),
     }
 }
 
@@ -57,14 +56,14 @@ impl LB {
         task::spawn(async move {
             info!("Initialising targets");
             for k in init_conf.targets.clone().unwrap().keys() {
-                healthy_targets.write().await.insert(k.to_string(), vec![]);
+                healthy_targets.insert(k.to_string(), vec![]);
             }
+            info!("Initialised!");
 
             while let Some(msg) = receiver.recv().await {
                 match msg {
                     Health::Success(state) => {
-                        if let Some(backends) = healthy_targets.read().await.get(&state.target_name)
-                        {
+                        if let Some(backends) = healthy_targets.get(&state.target_name) {
                             let mut backends = backends.to_vec();
                             if let Some(_idx) = backends.iter().position(|b| b == &state.backend) {
                                 info!(
@@ -73,38 +72,17 @@ impl LB {
                                 );
                             } else {
                                 backends.push(state.backend);
-
-                                if let Ok(mut healthy_targets) = healthy_targets.try_write() {
-                                    healthy_targets.insert(state.target_name, backends);
-                                } else {
-                                    info!(
-                                        "Unable to acquire write lock for {}, moving to next cycle",
-                                        state.target_name
-                                    );
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(250))
-                                        .await;
-                                }
+                                healthy_targets.insert(state.target_name, backends);
                             };
                         }
                     }
                     Health::Failure(state) => {
-                        if let Some(backends) = healthy_targets.read().await.get(&state.target_name)
-                        {
+                        if let Some(backends) = healthy_targets.get(&state.target_name) {
                             let mut backends = backends.to_vec();
                             if let Some(idx) = backends.iter().position(|b| b == &state.backend) {
                                 let _ = backends.remove(idx);
                                 info!("Updating {} with {:?}", state.target_name, backends);
-                                if let Ok(mut healthy_targets) = healthy_targets.try_write() {
-                                    healthy_targets.insert(state.target_name, backends);
-                                } else {
-                                    info!(
-                                        "Unable to acquire write lock for {}, moving to next cycle",
-                                        state.target_name
-                                    );
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(250))
-                                        .await;
-                                    continue;
-                                }
+                                healthy_targets.insert(state.target_name, backends);
                             } else {
                                 info!("{:?} is not in healthy target mapping for {}, nothing to remove", state.backend, state.target_name);
                             };

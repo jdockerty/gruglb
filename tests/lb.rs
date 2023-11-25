@@ -75,16 +75,12 @@ async fn register_healthy_targets() {
 
     let tcp_healthy_backends = lb
         .current_healthy_targets
-        .read()
-        .await
         .get("tcpServersA")
         .unwrap()
         .to_owned();
 
     let http_healthy_backends = lb
         .current_healthy_targets
-        .read()
-        .await
         .get("webServersA")
         .unwrap()
         .to_owned();

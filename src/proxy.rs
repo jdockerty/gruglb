@@ -1,6 +1,7 @@
 use crate::config::{Backend, Config, Protocol, Target};
 use crate::lb::SendTargets;
 use anyhow::{Context, Result};
+use dashmap::DashMap;
 use reqwest::Response;
 use std::iter::Iterator;
 use std::{collections::HashMap, sync::Arc, thread, time::Duration, vec};
@@ -109,7 +110,6 @@ pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
                                 }))
                                 .await
                                 .unwrap();
-                            // healthy_backends.push(backend.clone());
                         } else {
                             info!("({name}, {request_addr}) is unhealthy, removing from pool");
                             // This is "removed from the pool" because it is not included in
@@ -138,12 +138,12 @@ pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
 
 // Proxy a TCP connection to a range of configured backend servers.
 pub async fn tcp_connection(
-    targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    targets: Arc<DashMap<String, Vec<Backend>>>,
     target_name: String,
     routing_idx: Arc<RwLock<usize>>,
     mut stream: TcpStream,
 ) -> Result<()> {
-    if let Some(backends) = targets.read().await.get(&target_name) {
+    if let Some(backends) = targets.get(&target_name) {
         let backends = backends.to_vec();
         debug!("Backends configured {:?}", &backends);
         let backend_count = backends.len();
@@ -197,14 +197,14 @@ async fn construct_response(response: Response) -> Result<String> {
 
 pub async fn http_connection(
     client: Arc<reqwest::Client>,
-    targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    targets: Arc<DashMap<String, Vec<Backend>>>,
     target_name: String,
     routing_idx: Arc<RwLock<usize>>,
     method: String,
     request_path: String,
     mut stream: TcpStream,
 ) -> Result<()> {
-    if let Some(backends) = targets.read().await.get(&target_name) {
+    if let Some(backends) = targets.get(&target_name) {
         let backends = backends.to_vec();
         debug!("Backends configured {:?}", &backends);
         let backend_count = backends.len();
@@ -307,7 +307,7 @@ async fn generate_http_listeners(
 pub async fn accept_http(
     client: Arc<reqwest::Client>,
     bind_address: String,
-    current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
     targets: HashMap<String, Target>,
 ) -> Result<()> {
     let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
@@ -365,7 +365,7 @@ pub async fn accept_http(
 /// handling incoming connections, passing them to the configured TCP backends.
 pub async fn accept_tcp(
     bind_address: String,
-    current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
     targets: HashMap<String, Target>,
 ) -> Result<()> {
     let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
