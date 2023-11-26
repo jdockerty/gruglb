@@ -55,7 +55,8 @@ impl LB {
                             let target_name = state.target_name.clone();
                             let backend = state.backend.clone();
 
-                            let mut backends = healthy_targets.entry(target_name).or_insert(vec![]);
+                            // Default is a Vec<Backend>, so inserts an empty Vec if not present.
+                            let mut backends = healthy_targets.entry(target_name).or_default();
 
                             if !backends.iter().any(|b| b == &backend) {
                                 info!("Backend not in pool, adding");
@@ -68,7 +69,8 @@ impl LB {
                             let target_name = state.target_name.clone();
                             let backend = state.backend.clone();
 
-                            let mut backends = healthy_targets.entry(target_name).or_insert(vec![]);
+                            // Default is a Vec<Backend>, so inserts an empty Vec if not present.
+                            let mut backends = healthy_targets.entry(target_name).or_default();
 
                             if let Some(idx) = backends.iter().position(|b| b == &backend) {
                                 info!("Backend exists in healthy state, removing from pool");
