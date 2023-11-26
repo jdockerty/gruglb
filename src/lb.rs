@@ -8,8 +8,8 @@ use tokio::task;
 use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
-pub type SendTargets = Sender<Health>;
-pub type RecvTargets = Receiver<Health>;
+pub type SendTargets = Sender<Vec<Health>>;
+pub type RecvTargets = Receiver<Vec<Health>>;
 
 /// Load balancer application
 #[derive(Debug)]
@@ -38,54 +38,44 @@ impl LB {
         }
 
         // Provides the health check thread with its own configuration.
-        let tcp_conf = self.conf.clone();
-        let http_conf = self.conf.clone();
-        let tcp_sender = sender.clone();
-        let http_sender = sender.clone();
+        let health_conf = self.conf.clone();
         task::spawn(async move {
-            proxy::tcp_health(tcp_conf, tcp_sender).await;
+            proxy::health(health_conf, sender).await;
         });
-        task::spawn(async move {
-            proxy::http_health(http_conf, http_sender).await;
-        });
+
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
         // Initialise the targets to avoid deadlocks on startup.
-        let init_conf = self.conf.clone();
         task::spawn(async move {
-            info!("Initialising targets");
-            for k in init_conf.targets.clone().unwrap().keys() {
-                healthy_targets.insert(k.to_string(), vec![]);
-            }
-            info!("Initialised!");
+            while let Some(results) = receiver.recv().await {
+                for health_result in results {
+                    match health_result {
+                        Health::Success(state) => {
+                            let target_name = state.target_name.clone();
+                            let backend = state.backend.clone();
 
-            while let Some(msg) = receiver.recv().await {
-                match msg {
-                    Health::Success(state) => {
-                        if let Some(backends) = healthy_targets.get(&state.target_name) {
-                            let mut backends = backends.to_vec();
-                            if let Some(_idx) = backends.iter().position(|b| b == &state.backend) {
-                                info!(
-                                    "Backend for {} already healthy, nothing to do",
-                                    state.target_name
-                                );
+                            let mut backends = healthy_targets.entry(target_name).or_insert(vec![]);
+
+                            if !backends.iter().any(|b| b == &backend) {
+                                info!("Backend not in pool, adding");
+                                backends.push(backend);
                             } else {
-                                backends.push(state.backend);
-                                healthy_targets.insert(state.target_name, backends);
-                            };
+                                info!("Backend exists in healthy state, nothing to do");
+                            }
                         }
-                    }
-                    Health::Failure(state) => {
-                        if let Some(backends) = healthy_targets.get(&state.target_name) {
-                            let mut backends = backends.to_vec();
-                            if let Some(idx) = backends.iter().position(|b| b == &state.backend) {
-                                let _ = backends.remove(idx);
-                                info!("Updating {} with {:?}", state.target_name, backends);
-                                healthy_targets.insert(state.target_name, backends);
+                        Health::Failure(state) => {
+                            let target_name = state.target_name.clone();
+                            let backend = state.backend.clone();
+
+                            let mut backends = healthy_targets.entry(target_name).or_insert(vec![]);
+
+                            if let Some(idx) = backends.iter().position(|b| b == &backend) {
+                                info!("Backend exists in healthy state, removing from pool");
+                                backends.remove(idx);
                             } else {
-                                info!("{:?} is not in healthy target mapping for {}, nothing to remove", state.backend, state.target_name);
-                            };
+                                info!("Backend not in pool, nothing to do");
+                            }
                         }
                     }
                 }

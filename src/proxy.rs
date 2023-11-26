@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use reqwest::Response;
 use std::iter::Iterator;
-use std::{collections::HashMap, sync::Arc, thread, time::Duration, vec};
+use std::{collections::HashMap, sync::Arc, vec};
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -12,10 +12,6 @@ use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
-
-fn health_check_wait(d: Duration) {
-    thread::sleep(d);
-}
 
 #[derive(Debug)]
 pub struct CheckState {
@@ -29,110 +25,88 @@ pub enum Health {
     Failure(CheckState),
 }
 
-pub async fn http_health(conf: Arc<Config>, sender: SendTargets) {
-    let health_client = reqwest::Client::new();
-
+pub async fn health(conf: Arc<Config>, sender: SendTargets) {
+    let mut interval = tokio::time::interval(conf.health_check_interval());
     if let Some(targets) = &conf.targets {
+        let health_client = reqwest::Client::new();
         loop {
-            info!("Starting HTTP health checks");
+            interval.tick().await;
+
+            let mut results: Vec<Health> = vec![];
+
             for (name, target) in targets {
-                if target.protocol_type() != Protocol::Http {
-                    continue;
-                }
+                match target.protocol_type() {
+                    Protocol::Http => {
+                        if let Some(backends) = &target.backends {
+                            for backend in backends {
+                                let request_addr = &format!(
+                                    "http://{}:{}{}",
+                                    backend.host,
+                                    backend.port,
+                                    backend.health_path.clone().unwrap()
+                                );
+                                match health_client.get(request_addr).send().await {
+                                    Ok(_response) => {
+                                        info!("{request_addr} is healthy backend for {}", name);
+                                        info!("[HTTP] Sending success to channel");
 
-                if let Some(backends) = &target.backends {
-                    for backend in backends {
-                        let request_addr = &format!(
-                            "http://{}:{}{}",
-                            backend.host,
-                            backend.port,
-                            backend.health_path.clone().unwrap()
-                        );
-
-                        match health_client.get(request_addr).send().await {
-                            Ok(_response) => {
-                                info!("{request_addr} is healthy backend for {}", name);
-                                info!("[HTTP] Sending success to channel");
-
-                                sender
-                                    .send(Health::Success(CheckState {
-                                        target_name: name.to_string(),
-                                        backend: backend.clone(),
-                                    }))
-                                    .await
-                                    .unwrap();
+                                        results.push(Health::Success(CheckState {
+                                            target_name: name.clone(),
+                                            backend: backend.clone(),
+                                        }));
+                                    }
+                                    Err(_) => {
+                                        info!("({name}, {request_addr}) is unhealthy, removing from pool");
+                                        results.push(Health::Failure(CheckState {
+                                            target_name: name.clone(),
+                                            backend: backend.clone(),
+                                        }));
+                                        info!("[HTTP] Sending failure to channel");
+                                    }
+                                }
                             }
-                            Err(_) => {
-                                info!("({name}, {request_addr}) is unhealthy, removing from pool");
-                                info!("[HTTP] Sending failure to channel");
-                                sender
-                                    .send(Health::Failure(CheckState {
-                                        target_name: name.to_string(),
-                                        backend: backend.clone(),
-                                    }))
-                                    .await
-                                    .unwrap();
-                            }
-                        }
-                    }
-                } else {
-                    info!("No backends to health check for {}", name);
-                }
-            }
-            health_check_wait(conf.health_check_interval());
-        }
-    } else {
-        info!("[HTTP] No targets configured, unable to health check.");
-    }
-}
-
-/// Run health checks against the configured TCP targets.
-pub async fn tcp_health(conf: Arc<Config>, sender: SendTargets) {
-    if let Some(targets) = &conf.targets {
-        loop {
-            info!("Starting TCP health checks");
-            for (name, target) in targets {
-                if target.protocol_type() != Protocol::Tcp {
-                    continue;
-                }
-                // healthy_targets.insert(name.to_string(), healthy_backends.clone());
-                if let Some(backends) = &target.backends {
-                    for backend in backends {
-                        let request_addr = &format!("{}:{}", backend.host, backend.port);
-
-                        if let Ok(mut stream) = TcpStream::connect(request_addr).await {
-                            stream.shutdown().await.unwrap();
-                            info!("{request_addr} is healthy backend for {}", name);
-                            sender
-                                .send(Health::Success(CheckState {
-                                    target_name: name.to_string(),
-                                    backend: backend.clone(),
-                                }))
-                                .await
-                                .unwrap();
                         } else {
-                            info!("({name}, {request_addr}) is unhealthy, removing from pool");
-                            // This is "removed from the pool" because it is not included in
-                            // the vector for the next channel transmission, so traffic does not get routed
-                            // to it.
-                            sender
-                                .send(Health::Failure(CheckState {
-                                    target_name: name.to_string(),
-                                    backend: backend.clone(),
-                                }))
-                                .await
-                                .unwrap();
+                            info!("No backends to health check for {}", name);
                         }
                     }
-                } else {
-                    info!("No backends to health check for {}", name);
+                    Protocol::Tcp => {
+                        if let Some(backends) = &target.backends {
+                            for backend in backends {
+                                let request_addr = &format!("{}:{}", backend.host, backend.port);
+
+                                if let Ok(mut stream) = TcpStream::connect(request_addr).await {
+                                    info!("{request_addr} is healthy backend for {}", name);
+                                    stream.shutdown().await.unwrap();
+                                    results.push(Health::Success(CheckState {
+                                        target_name: name.clone(),
+                                        backend: backend.clone(),
+                                    }))
+                                } else {
+                                    info!(
+                                        "({name}, {request_addr}) is unhealthy, removing from pool"
+                                    );
+                                    results.push(Health::Failure(CheckState {
+                                        target_name: name.clone(),
+                                        backend: backend.clone(),
+                                    }))
+                                    // This is "removed from the pool" because it is not included in
+                                    // the vector for the next channel transmission, so traffic does not get routed
+                                    // to it.
+                                }
+                            }
+                        } else {
+                            info!("No backends to health check for {}", name);
+                        }
+                    }
+                    Protocol::Unsupported => {
+                        error!("({name}, {target:?}) sent an unsupported protocol, cannot perform health check.");
+                    }
                 }
             }
-            info!("[TCP] Sending targets to channel");
-            health_check_wait(conf.health_check_interval());
+            sender.send(results).await.unwrap();
         }
     } else {
-        info!("[TCP] No targets configured, unable to health check.");
+        info!("No targets configured, cannot perform health checks.");
     }
 }
 
