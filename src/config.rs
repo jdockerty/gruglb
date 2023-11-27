@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use std::{collections::HashMap, fs::File, time::Duration};
+use std::{collections::HashMap, fmt::Display, fs::File, time::Duration};
 use tracing_subscriber::filter::LevelFilter;
 
 /// Protocol to use against a configured target.
@@ -69,6 +69,16 @@ pub struct Backend {
 impl PartialEq for Backend {
     fn eq(&self, other: &Backend) -> bool {
         self.port == other.port && self.host == other.host && self.health_path == other.health_path
+    }
+}
+
+impl Display for Backend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(health_path) = &self.health_path {
+            write!(f, "{}:{}/{}", self.host, self.port, health_path)
+        } else {
+            write!(f, "{}:{}", self.host, self.port)
+        }
     }
 }
 

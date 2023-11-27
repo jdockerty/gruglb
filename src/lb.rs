@@ -46,7 +46,6 @@ impl LB {
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
-        // Initialise the targets to avoid deadlocks on startup.
         task::spawn(async move {
             while let Some(results) = receiver.recv().await {
                 for health_result in results {
@@ -59,10 +58,13 @@ impl LB {
                             let mut backends = healthy_targets.entry(target_name).or_default();
 
                             if !backends.iter().any(|b| b == &backend) {
-                                info!("Backend not in pool, adding");
+                                info!("({}, {}) not in pool, adding", state.target_name, backend);
                                 backends.push(backend);
                             } else {
-                                info!("Backend exists in healthy state, nothing to do");
+                                info!(
+                                    "({}, {}) exists in healthy state, nothing to do",
+                                    state.target_name, backend
+                                );
                             }
                         }
                         Health::Failure(state) => {
@@ -73,10 +75,16 @@ impl LB {
                             let mut backends = healthy_targets.entry(target_name).or_default();
 
                             if let Some(idx) = backends.iter().position(|b| b == &backend) {
-                                info!("Backend exists in healthy state, removing from pool");
+                                info!(
+                                    "({}, {}) is unhealthy, removing from pool",
+                                    state.target_name, backend
+                                );
                                 backends.remove(idx);
                             } else {
-                                info!("Backend not in pool, nothing to do");
+                                info!(
+                                    "({}, {}) still unhealthy, nothing to do",
+                                    state.target_name, backend
+                                );
                             }
                         }
                     }
