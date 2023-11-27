@@ -1,0 +1,13 @@
+health_check_interval: 5
+logging: info
+targets:
+  httpTargets:
+    protocol: 'http'
+    listener: 8080
+    backends:
+      - host: "127.0.0.1"
+        port: 8092
+        health_path: "/health"
+      - host: "127.0.0.1"
+        port: 8093
+        health_path: "/health"
