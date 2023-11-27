@@ -75,7 +75,7 @@ impl PartialEq for Backend {
 impl Display for Backend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(health_path) = &self.health_path {
-            write!(f, "{}:{}/{}", self.host, self.port, health_path)
+            write!(f, "{}:{}{}", self.host, self.port, health_path)
         } else {
             write!(f, "{}:{}", self.host, self.port)
         }

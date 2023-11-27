@@ -12,6 +12,9 @@ struct Cli {
     #[arg(long, default_value = "tcp", env = "FAKE_BACKEND_PROTOCOL")]
     protocol: String,
 
+    #[arg(long, short)]
+    verbose: bool,
+
     /// ID of the server, used for knowing which server you are receiving responses from.
     #[arg(long, env = "FAKE_BACKEND_ID")]
     id: String,
@@ -30,7 +33,9 @@ pub fn run() {
             );
 
             while let Ok((mut stream, addr)) = addr.accept() {
-                println!("Incoming from {}", addr);
+                if args.verbose {
+                    println!("Incoming from {}", addr);
+                }
                 let msg = &format!("Hello from {}", args.id);
                 let status_line = "HTTP/1.1 200 OK";
                 let length = msg.len();
@@ -51,7 +56,9 @@ pub fn run() {
             );
 
             while let Ok((mut stream, addr)) = addr.accept() {
-                println!("Incoming from {}", addr);
+                if args.verbose {
+                    println!("Incoming from {}", addr);
+                }
                 let buf = format!("Hello from {}", args.id);
                 stream.write_all(buf.as_bytes()).unwrap();
             }
