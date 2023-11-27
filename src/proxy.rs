@@ -13,18 +13,25 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
+/// Contains useful contextual information about a conducted health check.
+/// This is used to aid in updating the condition of backends to be routable.
 #[derive(Debug)]
-pub struct CheckState {
+pub struct State {
     pub target_name: String,
     pub backend: Backend,
 }
 
+/// The resulting health check can either be a `Success` or `Failure` mode,
+/// depending on the returned response.
 #[derive(Debug)]
 pub enum Health {
-    Success(CheckState),
-    Failure(CheckState),
+    Success(State),
+    Failure(State),
 }
 
+/// Conducts health checks against the configured targets.
+/// This expects a channel which can be sent to, the receiving end of the channel
+/// is used to keep track of whether the backends are routable.
 pub async fn health(conf: Arc<Config>, sender: SendTargets) {
     let mut interval = tokio::time::interval(conf.health_check_interval());
     if let Some(targets) = &conf.targets {
@@ -50,14 +57,14 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                         info!("{request_addr} is healthy backend for {}", name);
                                         info!("[HTTP] Sending success to channel");
 
-                                        results.push(Health::Success(CheckState {
+                                        results.push(Health::Success(State {
                                             target_name: name.clone(),
                                             backend: backend.clone(),
                                         }));
                                     }
                                     Err(_) => {
                                         info!("({name}, {request_addr}) is unhealthy, removing from pool");
-                                        results.push(Health::Failure(CheckState {
+                                        results.push(Health::Failure(State {
                                             target_name: name.clone(),
                                             backend: backend.clone(),
                                         }));
@@ -77,7 +84,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                 if let Ok(mut stream) = TcpStream::connect(request_addr).await {
                                     info!("{request_addr} is healthy backend for {}", name);
                                     stream.shutdown().await.unwrap();
-                                    results.push(Health::Success(CheckState {
+                                    results.push(Health::Success(State {
                                         target_name: name.clone(),
                                         backend: backend.clone(),
                                     }))
@@ -85,7 +92,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                     info!(
                                         "({name}, {request_addr}) is unhealthy, removing from pool"
                                     );
-                                    results.push(Health::Failure(CheckState {
+                                    results.push(Health::Failure(State {
                                         target_name: name.clone(),
                                         backend: backend.clone(),
                                     }))
@@ -110,7 +117,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
     }
 }
 
-// Proxy a TCP connection to a range of configured backend servers.
+/// Proxy a TCP connection to a range of configured backend servers.
 pub async fn tcp_connection(
     targets: Arc<DashMap<String, Vec<Backend>>>,
     target_name: String,
@@ -169,6 +176,7 @@ async fn construct_response(response: Response) -> Result<String> {
     Ok(response)
 }
 
+/// Proxy a HTTP connection to a range of configured backend servers.
 pub async fn http_connection(
     client: Arc<reqwest::Client>,
     targets: Arc<DashMap<String, Vec<Backend>>>,
@@ -260,6 +268,7 @@ async fn generate_tcp_listeners(
     Ok(tcp_bindings)
 }
 
+/// Bind to the configured listener ports for incoming HTTP connections.
 async fn generate_http_listeners(
     bind_address: String,
     targets: HashMap<String, Target>,
@@ -278,6 +287,8 @@ async fn generate_http_listeners(
     Ok(http_bindings)
 }
 
+/// Accept HTTP connections by binding to multiple `TcpListener` socket address and
+/// handling incoming connections, passing them to the configured HTTP backends.
 pub async fn accept_http(
     client: Arc<reqwest::Client>,
     bind_address: String,
