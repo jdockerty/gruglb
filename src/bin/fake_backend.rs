@@ -1,5 +1,6 @@
-use gruglb::fakebackend::run;
+use anyhow::Result;
 
-fn main() {
-    run();
+#[tokio::main]
+async fn main() -> Result<()> {
+    gruglb::fakebackend::run().await
 }

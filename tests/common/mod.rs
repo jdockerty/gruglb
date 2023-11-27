@@ -1,7 +1,7 @@
 use gruglb::config;
 use gruglb::lb::{RecvTargets, SendTargets};
 use std::fs::File;
-use std::sync::mpsc::sync_channel;
+use tokio::sync::mpsc::channel;
 
 pub fn test_targets_config() -> config::Config {
     let fake_conf =
@@ -11,6 +11,6 @@ pub fn test_targets_config() -> config::Config {
 }
 
 pub fn get_send_recv() -> (SendTargets, RecvTargets) {
-    let (send, recv): (SendTargets, RecvTargets) = sync_channel(2);
+    let (send, recv): (SendTargets, RecvTargets) = channel(1);
     (send, recv)
 }

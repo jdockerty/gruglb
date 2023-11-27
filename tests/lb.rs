@@ -1,17 +1,39 @@
 use assert_cmd::prelude::*;
 use gruglb;
-use std::process::Command;
+use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 mod common;
 
-#[test]
-fn register_healthy_targets() {
-    let pids = Arc::new(Mutex::new(vec![]));
+#[derive(Clone, Debug)]
+/// Helper struct for test cleanup.
+struct P {
+    pub pids: Arc<Mutex<Vec<Child>>>,
+}
+
+impl Drop for P {
+    fn drop(&mut self) {
+        for pid in self.pids.lock().unwrap().iter_mut() {
+            match pid.kill() {
+                Ok(_) => println!("Killed {}", pid.id()),
+                Err(e) => {
+                    let id = pid.id();
+                    panic!("Unable to kill process ({id}), you may have to do so manually: {e}");
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn register_healthy_targets() {
+    let p = P {
+        pids: Arc::new(Mutex::new(vec![])),
+    };
 
     for n in 0..=3 {
-        let pids = pids.clone();
+        let pids = p.pids.clone();
         thread::spawn(move || {
             let mut cmd = Command::cargo_bin("fake_backend").unwrap();
 
@@ -35,46 +57,42 @@ fn register_healthy_targets() {
             let process = cmd.spawn().unwrap();
             let mut pids = pids.lock().unwrap();
             pids.push(process);
-        });
+        })
+        .join()
+        .unwrap();
     }
 
     let test_config = common::test_targets_config();
 
     let (send, recv) = common::get_send_recv();
     let lb = gruglb::lb::new(test_config.clone());
-    let _ = lb.run(send, recv);
+    let _ = lb.run(send, recv).await.unwrap();
 
-    // Ensure that the health checks run over an interval by waiting double
-    // the configured duration.
-    thread::sleep(test_config.health_check_interval() * 2);
+    // Ensure that the health checks run over multiple cycles by waiting more
+    // than the configured duration.
+    let wait_duration = test_config.health_check_interval() * 10;
+    tokio::time::sleep(wait_duration).await;
 
     let tcp_healthy_backends = lb
         .current_healthy_targets
-        .read()
-        .unwrap()
         .get("tcpServersA")
         .unwrap()
         .to_owned();
 
     let http_healthy_backends = lb
         .current_healthy_targets
-        .read()
-        .unwrap()
         .get("webServersA")
         .unwrap()
         .to_owned();
 
-    // Stored our healthy targets, they're no longer needed so we can kill the
-    for pid in pids.lock().unwrap().iter_mut() {
-        match pid.kill() {
-            Ok(_) => {}
-            Err(e) => {
-                let id = pid.id();
-                panic!("Unable to kill process ({id}), you may have to do so manually: {e}");
-            }
-        }
-    }
-
-    assert_eq!(http_healthy_backends.len(), 2);
-    assert_eq!(tcp_healthy_backends.len(), 2);
+    assert_eq!(
+        tcp_healthy_backends.len(),
+        2,
+        "TCP healthy backends was {tcp_healthy_backends:?}"
+    );
+    assert_eq!(
+        http_healthy_backends.len(),
+        2,
+        "HTTP healthy backends was {http_healthy_backends:?}"
+    );
 }

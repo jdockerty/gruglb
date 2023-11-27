@@ -9,13 +9,17 @@ about writing more complex systems in Rust.
 
 ## Install
 
-Using `cargo` you can run
+Using `cargo` you can install via
 
 ```bash
-cargo install --git https://github.com/jdockerty/gruglb
+cargo install --git https://github.com/jdockerty/gruglb --bin gruglb
 ```
 
-This will install both the `gruglb` and `fake_backend` binaries. You can append `--bin gruglb` if you only wish to install the load balancer.
+Once installed, pass a YAML config file using the `--config` flag, for example
+
+```bash
+gruglb --config path/to/config.yml
+```
 
 ## How does it work?
 
@@ -96,3 +100,20 @@ Hello from fake-2
 - Round-robin load balancing of HTTP/TCP connections.
 - Health checks for HTTP/TCP targets.
 
+## Performance
+
+Using two [`simplebenchserver`](https://pkg.go.dev/github.com/codesenberg/bombardier@v1.2.6/cmd/utils/simplebenchserver) servers as backends for a HTTP target:
+
+```
+bombardier -c 500 -n 100000 http://localhost:8080
+Bombarding http://localhost:8080 with 100000 request(s) using 500 connection(s)
+ 100000 / 100000 [========================================================] 100.00% 9990/s 10s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec     10058.11     605.22   12118.48
+  Latency       49.84ms     4.32ms   137.55ms
+  HTTP codes:
+    1xx - 0, 2xx - 100000, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    11.36MB/s
+```

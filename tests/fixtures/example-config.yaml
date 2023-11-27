@@ -1,5 +1,5 @@
 # The interval, in seconds, to conduct HTTP/TCP health checks.
-health_check_interval: 5
+health_check_interval: 2
 
 # Log level information, defaults to 'info'
 logging: info
