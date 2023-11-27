@@ -1,22 +1,21 @@
 use crate::config::{Backend, Config};
-use crate::proxy;
+use crate::proxy::{self, Health};
 use anyhow::Result;
-use std::collections::HashMap;
+use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::RwLock;
 use tokio::task;
 use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
-pub type SendTargets = Sender<HashMap<String, Vec<Backend>>>;
-pub type RecvTargets = Receiver<HashMap<String, Vec<Backend>>>;
+pub type SendTargets = Sender<Vec<Health>>;
+pub type RecvTargets = Receiver<Vec<Health>>;
 
 /// Load balancer application
 #[derive(Debug)]
 pub struct LB {
     pub conf: Arc<Config>,
-    pub current_healthy_targets: Arc<RwLock<HashMap<String, Vec<Backend>>>>,
+    pub current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
 }
 
 /// Construct a new instance of gruglb
@@ -27,7 +26,7 @@ pub fn new(conf: Config) -> LB {
 
     LB {
         conf: Arc::new(conf),
-        current_healthy_targets: Arc::new(RwLock::new(HashMap::new())),
+        current_healthy_targets: Arc::new(DashMap::new()),
     }
 }
 
@@ -39,41 +38,48 @@ impl LB {
         }
 
         // Provides the health check thread with its own configuration.
-        let tcp_conf = self.conf.clone();
-        let http_conf = self.conf.clone();
-        let tcp_sender = sender.clone();
-        let http_sender = sender.clone();
+        let health_conf = self.conf.clone();
         task::spawn(async move {
-            proxy::tcp_health(tcp_conf, tcp_sender).await;
+            proxy::health(health_conf, sender).await;
         });
-        task::spawn(async move {
-            proxy::http_health(http_conf, http_sender).await;
-        });
+
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
+        // Initialise the targets to avoid deadlocks on startup.
         task::spawn(async move {
-            loop {
-                match receiver.recv().await {
-                    Some(msg) => {
-                        for target_name in msg.keys() {
-                            let backends = msg.get(target_name).unwrap().to_vec();
-                            if let Some(old) = healthy_targets
-                                .write()
-                                .await
-                                .insert(target_name.to_string(), backends.clone())
-                            {
-                                if old == backends {
-                                    info!("Backends for {target_name} unchanged.");
-                                    continue;
-                                }
-                                info!("Updated {target_name} from {old:?} to {backends:?}");
+            while let Some(results) = receiver.recv().await {
+                for health_result in results {
+                    match health_result {
+                        Health::Success(state) => {
+                            let target_name = state.target_name.clone();
+                            let backend = state.backend.clone();
+
+                            // Default is a Vec<Backend>, so inserts an empty Vec if not present.
+                            let mut backends = healthy_targets.entry(target_name).or_default();
+
+                            if !backends.iter().any(|b| b == &backend) {
+                                info!("Backend not in pool, adding");
+                                backends.push(backend);
                             } else {
-                                info!("Updated {target_name} with {backends:?}");
+                                info!("Backend exists in healthy state, nothing to do");
+                            }
+                        }
+                        Health::Failure(state) => {
+                            let target_name = state.target_name.clone();
+                            let backend = state.backend.clone();
+
+                            // Default is a Vec<Backend>, so inserts an empty Vec if not present.
+                            let mut backends = healthy_targets.entry(target_name).or_default();
+
+                            if let Some(idx) = backends.iter().position(|b| b == &backend) {
+                                info!("Backend exists in healthy state, removing from pool");
+                                backends.remove(idx);
+                            } else {
+                                info!("Backend not in pool, nothing to do");
                             }
                         }
                     }
-                    None => info!("Nothing to do, waiting for next receive cycle."),
                 }
             }
         });
