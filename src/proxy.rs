@@ -1,6 +1,7 @@
 use crate::config::{Backend, Config, Protocol, Target};
 use crate::lb::SendTargets;
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use dashmap::DashMap;
 use reqwest::Response;
 use std::iter::Iterator;
@@ -12,6 +13,31 @@ use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
+
+/// Proxy is used to encompass common functionality between L4 and L7 load balancing.
+///
+/// Traits cannot have `async` functions as part of stable Rust, but this proc-macro
+/// makes it possible.
+#[async_trait]
+pub trait Proxy {
+    /// Being accepting a particular type of connection.
+    ///
+    /// This is limited to TCP-oriented connections, e.g. TCP and HTTP.
+    async fn accept(
+        listeners: Vec<(String, TcpListener)>,
+        current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+    ) -> Result<()>;
+
+    async fn generate_listeners(
+        bind_address: String,
+        targets: HashMap<String, Target>,
+    ) -> Result<Vec<(String, TcpListener)>>;
+
+    // TODO: add another slash here once impl to stop errors.
+    // TODO: think about adding `self` here for connection related info?
+    // After accepting an incoming connection for a target, it should be proxied to a healthy backend.
+    // async fn proxy(target_name: String, routing_idx: Arc<RwLock<usize>>, mut stream: TcpStream) -> Result<()>;
+}
 
 /// Contains useful contextual information about a conducted health check.
 /// This is used to aid in updating the condition of backends to be routable.
