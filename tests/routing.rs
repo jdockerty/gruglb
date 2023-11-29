@@ -51,7 +51,7 @@ async fn route_to_healthy_targets() {
 
     for _ in 0..=4 {
         let response = http_client
-            .get("http://127.0.0.1:8080")
+            .get("http://localhost:8080")
             .send()
             .await
             .unwrap();
@@ -59,6 +59,13 @@ async fn route_to_healthy_targets() {
         responses.insert(response.text().await.unwrap());
     }
 
-    assert!(responses.contains("Hello from fake-http-2"));
-    assert!(responses.contains("Hello from fake-http-3"));
+    assert!(
+        responses.contains("Hello from fake-http-2"),
+        "responses did not contain 'Hello from fake-http-2'. Contains: {responses:?}"
+    );
+    assert!(
+        responses.contains("Hello from fake-http-3"),
+        "responses did not contain 'Hello from fake-http-3'. Contains: {responses:?}"
+    );
+    assert_eq!(responses.len(), 2);
 }

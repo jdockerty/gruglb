@@ -120,27 +120,27 @@ impl LB {
         //.await?;
 
         info!("Accepting http!");
-        let _http_client = Arc::new(reqwest::Client::new());
-        let _http_listeners = self
-            .generate_listeners(
-                self.conf
-                    .address
-                    .clone()
-                    .unwrap_or_else(|| "127.0.0.1".to_string()),
-                self.conf.targets.clone().unwrap(),
-                Protocol::Http,
-            )
-            .await?;
-        //proxy::accept_http(
-        //    http_client,
-        //    self.conf
-        //        .address
-        //        .clone()
-        //        .unwrap_or_else(|| "127.0.0.1".to_string()),
-        //    Arc::clone(&self.current_healthy_targets),
-        //    self.conf.targets.clone().unwrap(),
-        //)
-        //.await?;
+        let http_client = Arc::new(reqwest::Client::new());
+        //let http_listeners = self
+        //    .generate_listeners(
+        //        self.conf
+        //            .address
+        //            .clone()
+        //            .unwrap_or_else(|| "127.0.0.1".to_string()),
+        //        self.conf.targets.clone().unwrap(),
+        //        Protocol::Http,
+        //    )
+        //    .await?;
+        proxy::accept_http(
+            http_client,
+            self.conf
+                .address
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
+            Arc::clone(&self.current_healthy_targets),
+            self.conf.targets.clone().unwrap(),
+        )
+        .await?;
 
         Ok(())
     }
