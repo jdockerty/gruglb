@@ -28,11 +28,6 @@ pub trait Proxy {
         current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
     ) -> Result<()>;
 
-    async fn generate_listeners(
-        bind_address: String,
-        targets: HashMap<String, Target>,
-    ) -> Result<Vec<(String, TcpListener)>>;
-
     // TODO: add another slash here once impl to stop errors.
     // TODO: think about adding `self` here for connection related info?
     // After accepting an incoming connection for a target, it should be proxied to a healthy backend.

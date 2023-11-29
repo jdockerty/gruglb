@@ -1,5 +1,6 @@
 use crate::config::Protocol;
 use crate::config::{Backend, Config};
+use crate::http::HttpProxy;
 use crate::proxy::{self, Health, Proxy};
 use crate::tcp::TcpProxy;
 use anyhow::Result;
@@ -95,8 +96,6 @@ impl LB {
             }
         });
 
-        // http::proxy(addr, conf, targets)
-        // tcp::proxy(addr, conf, targets)
         let tcp_listeners = self
             .generate_listeners(
                 self.conf
@@ -107,41 +106,22 @@ impl LB {
                 Protocol::Tcp,
             )
             .await?;
-        TcpProxy::accept(tcp_listeners, Arc::clone(&self.current_healthy_targets)).await?;
+        let http_listeners = self
+            .generate_listeners(
+                self.conf
+                    .address
+                    .clone()
+                    .unwrap_or_else(|| "127.0.0.1".to_string()),
+                self.conf.targets.clone().unwrap(),
+                Protocol::Http,
+            )
+            .await?;
+
         info!("Accepting tcp!");
-        //proxy::accept_tcp(
-        //    self.conf
-        //        .address
-        //        .clone()
-        //        .unwrap_or_else(|| "127.0.0.1".to_string()),
-        //    Arc::clone(&self.current_healthy_targets),
-        //    self.conf.targets.clone().unwrap(),
-        //)
-        //.await?;
+        TcpProxy::accept(tcp_listeners, Arc::clone(&self.current_healthy_targets)).await?;
 
         info!("Accepting http!");
-        let http_client = Arc::new(reqwest::Client::new());
-        //let http_listeners = self
-        //    .generate_listeners(
-        //        self.conf
-        //            .address
-        //            .clone()
-        //            .unwrap_or_else(|| "127.0.0.1".to_string()),
-        //        self.conf.targets.clone().unwrap(),
-        //        Protocol::Http,
-        //    )
-        //    .await?;
-        proxy::accept_http(
-            http_client,
-            self.conf
-                .address
-                .clone()
-                .unwrap_or_else(|| "127.0.0.1".to_string()),
-            Arc::clone(&self.current_healthy_targets),
-            self.conf.targets.clone().unwrap(),
-        )
-        .await?;
-
+        HttpProxy::accept(http_listeners, Arc::clone(&self.current_healthy_targets)).await?;
         Ok(())
     }
 

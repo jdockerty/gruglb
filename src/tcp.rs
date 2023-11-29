@@ -1,12 +1,9 @@
 use crate::config::Backend;
-use crate::config::Protocol;
-use crate::config::Target;
 use crate::proxy::tcp_connection;
 use crate::proxy::Proxy;
 use anyhow::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
@@ -48,23 +45,5 @@ impl Proxy for TcpProxy {
             });
         }
         Ok(())
-    }
-
-    async fn generate_listeners(
-        bind_address: String,
-        targets: HashMap<String, Target>,
-    ) -> Result<Vec<(String, TcpListener)>> {
-        let mut tcp_bindings = vec![];
-
-        for (name, target) in targets {
-            if target.protocol_type() == Protocol::Tcp {
-                let addr = format!("{}:{}", bind_address.clone(), target.listener.unwrap());
-                let listener = TcpListener::bind(&addr).await?;
-                info!("Binding to {} for {}", &addr, &name);
-                tcp_bindings.push((name, listener));
-            }
-        }
-
-        Ok(tcp_bindings)
     }
 }

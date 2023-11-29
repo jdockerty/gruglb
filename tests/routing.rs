@@ -67,5 +67,7 @@ async fn route_to_healthy_targets() {
         responses.contains("Hello from fake-http-3"),
         "responses did not contain 'Hello from fake-http-3'. Contains: {responses:?}"
     );
+    // We're using a set, so we expect to only see these 2 known responses from the fake_backend
+    // servers.
     assert_eq!(responses.len(), 2);
 }
