@@ -20,6 +20,7 @@ impl Proxy for HttpProxy {
         current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
     ) -> Result<()> {
         let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
+        let client = Arc::new(reqwest::Client::new());
 
         tokio::spawn(async move {
             for (name, listener) in listeners {
@@ -47,7 +48,7 @@ impl Proxy for HttpProxy {
 
                     let method = http_info[0].clone();
                     let path = http_info[1].clone();
-                    let client = Arc::new(reqwest::Client::new());
+                    let client = client.clone();
                     tokio::spawn(async move {
                         info!("{method} request at {path}");
                         http_connection(
