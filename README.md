@@ -102,18 +102,59 @@ Hello from fake-2
 
 ## Performance
 
+_Note: this is not very scientific and was simply ran on my computer (Intel i7-8700 (12) @ 4.600GHz) as an experiment to see comparative performance between my implementation
+and something that I know is very good. In this case, that is `nginx`._
+
+Using [`bombardier`](https://github.com/codesenberg/bombardier/) as the tool of choice.
+
+### gruglb
+
 Using two [`simplebenchserver`](https://pkg.go.dev/github.com/codesenberg/bombardier@v1.2.6/cmd/utils/simplebenchserver) servers as backends for a HTTP target:
 
 ```
-bombardier -c 500 -n 100000 http://localhost:8080
-Bombarding http://localhost:8080 with 100000 request(s) using 500 connection(s)
- 100000 / 100000 [========================================================] 100.00% 9990/s 10s
+bombardier -l http://127.0.0.1:8080
+Bombarding http://127.0.0.1:8080 for 10s using 125 connection(s)
+[========================================================================================] 10s
 Done!
 Statistics        Avg      Stdev        Max
-  Reqs/sec     10058.11     605.22   12118.48
-  Latency       49.84ms     4.32ms   137.55ms
+  Reqs/sec     10909.76     867.06   12564.59
+  Latency       11.46ms     1.05ms    54.33ms
+  Latency Distribution
+     50%    11.35ms
+     75%    11.86ms
+     90%    12.35ms
+     95%    12.67ms
+     99%    13.83ms
   HTTP codes:
-    1xx - 0, 2xx - 100000, 3xx - 0, 4xx - 0, 5xx - 0
+    1xx - 0, 2xx - 108998, 3xx - 0, 4xx - 0, 5xx - 0
     others - 0
-  Throughput:    11.36MB/s
+  Throughput:    12.38MB/s
 ```
+
+### nginx
+
+Using the same two backend servers and a single worker process for `nginx`
+
+```
+bombardier -l http://127.0.0.1:8080
+Bombarding http://127.0.0.1:8080 for 10s using 125 connection(s)
+[========================================================================================] 10s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec     11996.59     784.99   14555.03
+  Latency       10.42ms     2.91ms   226.42ms
+  Latency Distribution
+     50%    10.37ms
+     75%    10.72ms
+     90%    11.04ms
+     95%    11.22ms
+     99%    11.71ms
+  HTTP codes:
+    1xx - 0, 2xx - 119862, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    14.29MB/s
+```
+
+Something to note is that `gruglb` does not have the concept of `worker_processes` like `nginx` does.
+
+This was ran with the default of a single process, it performs even better with multiple.
