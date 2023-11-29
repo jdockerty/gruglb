@@ -217,23 +217,29 @@ pub async fn http_connection(
             return Ok(());
         }
 
-        let mut idx = routing_idx.write().await;
+        // Limit the scope of the index write lock.
+        let http_backend: String;
+        {
+            let mut idx = routing_idx.write().await;
 
-        debug!("[HTTP] {backend_count} backends configured for {target_name}, current index {idx}");
+            debug!(
+                "[HTTP] {backend_count} backends configured for {target_name}, current index {idx}"
+            );
 
-        // Reset index when out of bounds to route back to the first server.
-        if *idx >= backend_count {
-            *idx = 0;
+            // Reset index when out of bounds to route back to the first server.
+            if *idx >= backend_count {
+                *idx = 0;
+            }
+
+            http_backend = format!(
+                "http://{}:{}{}",
+                backends[*idx].host, backends[*idx].port, request_path
+            );
+
+            // Increment a shared index after we've constructed our current connection
+            // address.
+            *idx += 1;
         }
-
-        let http_backend = format!(
-            "http://{}:{}{}",
-            backends[*idx].host, backends[*idx].port, request_path
-        );
-
-        // Increment a shared index after we've constructed our current connection
-        // address.
-        *idx += 1;
 
         info!("[HTTP] Attempting to connect to {}", &http_backend);
 
