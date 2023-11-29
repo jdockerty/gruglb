@@ -125,6 +125,9 @@ impl LB {
         Ok(())
     }
 
+    /// Generate `TcpListener`'s for a `protocol_type`.
+    ///
+    /// Currently only `Protocol::Tcp` and `Protocol::Http` are supported.
     async fn generate_listeners(
         &self,
         bind_address: String,

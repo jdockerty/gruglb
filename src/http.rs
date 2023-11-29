@@ -1,17 +1,36 @@
 use crate::config::Backend;
-use crate::proxy::http_connection;
+use crate::proxy::Connection;
 use crate::proxy::Proxy;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use dashmap::DashMap;
+use reqwest::Response;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+use tracing::debug;
+use tracing::error;
 use tracing::info;
 
 pub struct HttpProxy {}
+
+impl HttpProxy {
+    /// Helper for creating the relevant HTTP response to write into a `TcpStream`.
+    async fn construct_response(response: Response) -> Result<String> {
+        let http_version = response.version();
+        let status = response.status();
+        let response_body = response.text().await?;
+        let status_line = format!("{:?} {} OK", http_version, status);
+        let content_len = format!("Content-Length: {}", response_body.len());
+
+        let response = format!("{status_line}\r\n{content_len}\r\n\r\n{response_body}");
+
+        Ok(response)
+    }
+}
 
 #[async_trait]
 impl Proxy for HttpProxy {
@@ -50,22 +69,101 @@ impl Proxy for HttpProxy {
                     let path = http_info[1].clone();
                     let client = client.clone();
                     tokio::spawn(async move {
-                        info!("{method} request at {path}");
-                        http_connection(
-                            client,
-                            current_healthy_targets,
-                            name,
-                            idx,
-                            method.to_string(),
-                            path.to_string(),
+                        debug!("{method} request at {path}");
+                        let info = Connection {
+                            client: Some(client),
+                            targets: current_healthy_targets,
+                            target_name: name,
+                            method: Some(method),
+                            request_path: Some(path),
                             stream,
-                        )
-                        .await
-                        .unwrap();
+                        };
+                        HttpProxy::proxy(info, idx).await.unwrap();
                     });
                 }
             }
         });
+        Ok(())
+    }
+
+    async fn proxy(mut connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()> {
+        if let Some(backends) = connection.targets.get(&connection.target_name) {
+            let backends = backends.to_vec();
+            debug!("Backends configured {:?}", &backends);
+            let backend_count = backends.len();
+
+            if backend_count == 0 {
+                info!(
+                    "[HTTP] No routable backends for {}, nothing to do",
+                    &connection.target_name
+                );
+                return Ok(());
+            }
+
+            // Limit the scope of the index write lock.
+            let http_backend: String;
+            {
+                let mut idx = routing_idx.write().await;
+
+                debug!(
+                    "[HTTP] {backend_count} backends configured for {}, current index {idx}",
+                    &connection.target_name
+                );
+
+                // Reset index when out of bounds to route back to the first server.
+                if *idx >= backend_count {
+                    *idx = 0;
+                }
+
+                http_backend = format!(
+                    "http://{}:{}{}",
+                    backends[*idx].host,
+                    backends[*idx].port,
+                    connection.request_path.unwrap()
+                );
+
+                // Increment a shared index after we've constructed our current connection
+                // address.
+                *idx += 1;
+            }
+
+            info!("[HTTP] Attempting to connect to {}", &http_backend);
+
+            let method = connection.method.unwrap();
+            match method.as_str() {
+                "GET" => {
+                    let backend_response = connection
+                        .client
+                        .unwrap()
+                        .get(&http_backend)
+                        .send()
+                        .await
+                        .with_context(|| format!("unable to send response to {http_backend}"))?;
+                    let response = HttpProxy::construct_response(backend_response).await?;
+
+                    connection.stream.write_all(response.as_bytes()).await?;
+                }
+                "POST" => {
+                    let backend_response = connection
+                        .client
+                        .unwrap()
+                        .post(&http_backend)
+                        .send()
+                        .await
+                        .with_context(|| format!("unable to send response to {http_backend}"))?;
+                    let response = HttpProxy::construct_response(backend_response).await?;
+
+                    connection.stream.write_all(response.as_bytes()).await?;
+                }
+                _ => {
+                    error!("Unsupported: {method}")
+                }
+            }
+            info!("[HTTP] response sent to {}", &http_backend);
+        } else {
+            info!("[HTTP] No backend configured");
+        };
+
         Ok(())
     }
 }

@@ -1,5 +1,6 @@
 use crate::config::Backend;
 use crate::proxy::tcp_connection;
+use crate::proxy::Connection;
 use crate::proxy::Proxy;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -44,6 +45,10 @@ impl Proxy for TcpProxy {
                 }
             });
         }
+        Ok(())
+    }
+
+    async fn proxy(connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()> {
         Ok(())
     }
 }
