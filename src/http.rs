@@ -72,7 +72,7 @@ impl Proxy for HttpProxy {
                     let client = client.clone();
                     tokio::spawn(async move {
                         debug!("{method} request at {path}");
-                        let info = Connection {
+                        let connection = Connection {
                             client: Some(client),
                             targets: current_healthy_targets,
                             target_name: name,
@@ -80,7 +80,7 @@ impl Proxy for HttpProxy {
                             request_path: Some(path),
                             stream,
                         };
-                        HttpProxy::proxy(info, idx).await.unwrap();
+                        HttpProxy::proxy(connection, idx).await.unwrap();
                     });
                 }
             }
