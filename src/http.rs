@@ -15,6 +15,8 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 
+/// `HttpProxy` is used as a concrete implementation of the `Proxy` trait for HTTP
+/// connection proxying to configured targets.
 pub struct HttpProxy {}
 
 impl HttpProxy {
