@@ -50,7 +50,11 @@ async fn route_to_healthy_targets() {
     let mut responses = HashSet::new();
 
     for _ in 0..=4 {
-        let response = http_client.get("http://127.0.0.1:8080").send().await.unwrap();
+        let response = http_client
+            .get("http://127.0.0.1:8080")
+            .send()
+            .await
+            .unwrap();
         assert_eq!(response.status(), 200);
         responses.insert(response.text().await.unwrap());
     }

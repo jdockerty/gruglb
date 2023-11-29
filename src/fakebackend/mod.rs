@@ -33,14 +33,14 @@ pub async fn run() -> Result<()> {
                 addr.local_addr().unwrap()
             );
 
+            let status_line = "HTTP/1.1 200 OK";
+            let msg = &format!("Hello from {}", args.id);
+            let length = msg.len();
+
             while let Ok((mut stream, addr)) = addr.accept().await {
                 if args.verbose {
                     println!("Incoming from {}", addr);
                 }
-                let msg = &format!("Hello from {}", args.id);
-                let status_line = "HTTP/1.1 200 OK";
-                let length = msg.len();
-
                 let response =
                     format!("{status_line}\r\nContent-Length: {length}\nContent-Type: text/plain\r\n\r\n{msg}");
 
@@ -56,12 +56,12 @@ pub async fn run() -> Result<()> {
                 addr.local_addr().unwrap()
             );
 
+            let msg = format!("Hello from {}", args.id);
             while let Ok((mut stream, addr)) = addr.accept().await {
                 if args.verbose {
                     println!("Incoming from {}", addr);
                 }
-                let buf = format!("Hello from {}", args.id);
-                stream.write_all(buf.as_bytes()).await?;
+                stream.write_all(msg.as_bytes()).await?;
             }
         }
     }
