@@ -155,20 +155,25 @@ pub async fn tcp_connection(
             return Ok(());
         }
 
-        let mut idx = routing_idx.write().await;
+        // Limit the scope of the index write lock.
+        let backend_addr: String;
+        {
+            let mut idx = routing_idx.write().await;
+            debug!(
+                "[TCP] {backend_count} backends configured for {target_name}, current index {idx}"
+            );
 
-        debug!("[TCP] {backend_count} backends configured for {target_name}, current index {idx}");
+            // Reset index when out of bounds to route back to the first server.
+            if *idx >= backend_count {
+                *idx = 0;
+            }
 
-        // Reset index when out of bounds to route back to the first server.
-        if *idx >= backend_count {
-            *idx = 0;
+            backend_addr = format!("{}:{}", backends[*idx].host, backends[*idx].port);
+
+            // Increment a shared index after we've constructed our current connection
+            // address.
+            *idx += 1;
         }
-
-        let backend_addr = format!("{}:{}", backends[*idx].host, backends[*idx].port);
-
-        // Increment a shared index after we've constructed our current connection
-        // address.
-        *idx += 1;
 
         info!("[TCP] Attempting to connect to {}", &backend_addr);
 
