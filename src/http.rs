@@ -41,10 +41,11 @@ impl Proxy for HttpProxy {
         current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
     ) -> Result<()> {
         let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
-        let client = Arc::new(reqwest::Client::new());
-
-        tokio::spawn(async move {
-            for (name, listener) in listeners {
+        for (name, listener) in listeners {
+            let idx = idx.clone();
+            let client = Arc::new(reqwest::Client::new());
+            let current_healthy_targets = current_healthy_targets.clone();
+            tokio::spawn(async move {
                 while let Ok((mut stream, address)) = listener.accept().await {
                     let name = name.clone();
                     let idx = Arc::clone(&idx);
@@ -83,8 +84,8 @@ impl Proxy for HttpProxy {
                         HttpProxy::proxy(connection, idx).await.unwrap();
                     });
                 }
-            }
-        });
+            });
+        }
         Ok(())
     }
 
