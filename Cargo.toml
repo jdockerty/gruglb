@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
+async-trait = "0.1.74"
 clap = { version = "4.4.6", features = ["derive", "env"] }
 dashmap = "5.5.3"
 log = "0.4.20"

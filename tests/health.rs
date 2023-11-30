@@ -1,34 +1,14 @@
 use assert_cmd::prelude::*;
 use gruglb;
-use std::process::{Child, Command};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 mod common;
 
-#[derive(Clone, Debug)]
-/// Helper struct for test cleanup.
-struct P {
-    pub pids: Arc<Mutex<Vec<Child>>>,
-}
-
-impl Drop for P {
-    fn drop(&mut self) {
-        for pid in self.pids.lock().unwrap().iter_mut() {
-            match pid.kill() {
-                Ok(_) => println!("Killed {}", pid.id()),
-                Err(e) => {
-                    let id = pid.id();
-                    panic!("Unable to kill process ({id}), you may have to do so manually: {e}");
-                }
-            }
-        }
-    }
-}
-
 #[tokio::test]
 async fn register_healthy_targets() {
-    let p = P {
+    let p = common::Helper {
         pids: Arc::new(Mutex::new(vec![])),
     };
 

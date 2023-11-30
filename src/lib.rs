@@ -1,7 +1,9 @@
 pub mod config;
 pub mod fakebackend;
+pub mod http;
 pub mod lb;
 pub mod proxy;
+pub mod tcp;
 
 use anyhow::Result;
 use clap::Parser;

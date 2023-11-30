@@ -1,8 +1,12 @@
+use crate::config::Protocol;
 use crate::config::{Backend, Config};
-use crate::proxy::{self, Health};
+use crate::http::HttpProxy;
+use crate::proxy::{self, Health, Proxy};
+use crate::tcp::TcpProxy;
 use anyhow::Result;
 use dashmap::DashMap;
 use std::sync::Arc;
+use tokio::net::TcpListener;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task;
 use tracing::{debug, info};
@@ -92,30 +96,55 @@ impl LB {
             }
         });
 
+        let tcp_listeners = self
+            .generate_listeners(
+                self.conf
+                    .address
+                    .clone()
+                    .unwrap_or_else(|| "127.0.0.1".to_string()),
+                self.conf.targets.clone().unwrap(),
+                Protocol::Tcp,
+            )
+            .await?;
+        let http_listeners = self
+            .generate_listeners(
+                self.conf
+                    .address
+                    .clone()
+                    .unwrap_or_else(|| "127.0.0.1".to_string()),
+                self.conf.targets.clone().unwrap(),
+                Protocol::Http,
+            )
+            .await?;
+
         info!("Accepting tcp!");
-        proxy::accept_tcp(
-            self.conf
-                .address
-                .clone()
-                .unwrap_or_else(|| "127.0.0.1".to_string()),
-            Arc::clone(&self.current_healthy_targets),
-            self.conf.targets.clone().unwrap(),
-        )
-        .await?;
+        TcpProxy::accept(tcp_listeners, Arc::clone(&self.current_healthy_targets)).await?;
 
         info!("Accepting http!");
-        let http_client = Arc::new(reqwest::Client::new());
-        proxy::accept_http(
-            http_client,
-            self.conf
-                .address
-                .clone()
-                .unwrap_or_else(|| "127.0.0.1".to_string()),
-            Arc::clone(&self.current_healthy_targets),
-            self.conf.targets.clone().unwrap(),
-        )
-        .await?;
-
+        HttpProxy::accept(http_listeners, Arc::clone(&self.current_healthy_targets)).await?;
         Ok(())
+    }
+
+    /// Generate `TcpListener`'s for a `protocol_type`.
+    ///
+    /// Currently only `Protocol::Tcp` and `Protocol::Http` are supported.
+    async fn generate_listeners(
+        &self,
+        bind_address: String,
+        targets: std::collections::HashMap<String, crate::config::Target>,
+        protocol_type: Protocol,
+    ) -> Result<Vec<(String, TcpListener)>> {
+        let mut bindings = vec![];
+
+        for (name, target) in targets {
+            if target.protocol_type() == protocol_type {
+                let addr = format!("{}:{}", bind_address.clone(), target.listener.unwrap());
+                let listener = TcpListener::bind(&addr).await?;
+                info!("Binding to {} for {}", &addr, &name);
+                bindings.push((name, listener));
+            }
+        }
+
+        Ok(bindings)
     }
 }
