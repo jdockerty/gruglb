@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::info;
 
@@ -22,6 +23,7 @@ impl Proxy for TcpProxy {
     async fn accept(
         listeners: Vec<(String, TcpListener)>,
         current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+        cancel: CancellationToken,
     ) -> Result<()> {
         let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
@@ -29,9 +31,17 @@ impl Proxy for TcpProxy {
             // Listen to incoming traffic on separate threads
             let idx = Arc::clone(&idx);
             let current_healthy_targets = Arc::clone(&current_healthy_targets);
+            let cancel = cancel.clone();
 
             tokio::spawn(async move {
-                while let Ok((stream, remote_peer)) = listener.accept().await {
+                while let Ok((mut stream, remote_peer)) = listener.accept().await {
+                    if cancel.is_cancelled() {
+                        info!(
+                            "[CANCEL] Received cancel, no longer accepting incoming TCP requests."
+                        );
+                        stream.shutdown().await.unwrap();
+                        break;
+                    }
                     info!("Incoming request on {remote_peer}");
 
                     let idx = Arc::clone(&idx);
@@ -57,6 +67,7 @@ impl Proxy for TcpProxy {
                 }
             });
         }
+
         Ok(())
     }
 
@@ -101,6 +112,7 @@ impl Proxy for TcpProxy {
             let mut buffer = Vec::new();
             response.read_to_end(&mut buffer).await?;
             connection.stream.write_all(&buffer).await?;
+
             debug!("TCP stream closed");
         } else {
             info!("[TCP] No backend configured");

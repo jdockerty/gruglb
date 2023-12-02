@@ -1,8 +1,8 @@
 use assert_cmd::prelude::*;
-use gruglb;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use tokio_util::sync::CancellationToken;
 
 mod common;
 
@@ -46,7 +46,8 @@ async fn register_healthy_targets() {
 
     let (send, recv) = common::get_send_recv();
     let lb = gruglb::lb::new(test_config.clone());
-    let _ = lb.run(send, recv).await.unwrap();
+    let token = CancellationToken::new();
+    lb.run(send, recv, token.child_token()).await.unwrap();
 
     // Ensure that the health checks run over multiple cycles by waiting more
     // than the configured duration.
