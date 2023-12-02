@@ -25,11 +25,23 @@ impl HttpProxy {
     async fn construct_response(response: Response) -> Result<String> {
         let http_version = response.version();
         let status = response.status();
-        let response_body = response.text().await?;
-        let status_line = format!("{:?} {} OK", http_version, status);
-        let content_len = format!("Content-Length: {}", response_body.len());
+        let headers = response.headers();
+        let mut header = String::default();
+        for header_key in headers.keys() {
+            if let Some(value) = headers.get(header_key) {
+                header.push_str(&format!(
+                    "{}: {}\r\n",
+                    header_key.to_string(),
+                    value.to_str().unwrap()
+                ));
+            }
+        }
+        // Don't reuse connections
+        // header.push_str(&format!("Connection: close"));
 
-        let response = format!("{status_line}\r\n{content_len}\r\n\r\n{response_body}");
+        let response_body = response.text().await?;
+        let status_line = format!("{:?} {}", http_version, status);
+        let response = format!("{status_line}\r\n{header}\r\n\r\n{response_body}");
 
         Ok(response)
     }
@@ -152,7 +164,7 @@ impl Proxy for HttpProxy {
                         .with_context(|| format!("unable to send response to {http_backend}"))?;
                     let response = HttpProxy::construct_response(backend_response).await?;
 
-                    connection.stream.write_all(response.as_bytes()).await?;
+                    connection.stream.write(response.as_bytes()).await?;
                 }
                 "POST" => {
                     let backend_response = connection
@@ -164,7 +176,7 @@ impl Proxy for HttpProxy {
                         .with_context(|| format!("unable to send response to {http_backend}"))?;
                     let response = HttpProxy::construct_response(backend_response).await?;
 
-                    connection.stream.write_all(response.as_bytes()).await?;
+                    connection.stream.write(response.as_bytes()).await?;
                 }
                 _ => {
                     error!("Unsupported: {method}")
