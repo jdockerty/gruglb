@@ -112,23 +112,23 @@ Using [`bombardier`](https://github.com/codesenberg/bombardier/) as the tool of 
 Using two [`simplebenchserver`](https://pkg.go.dev/github.com/codesenberg/bombardier@v1.2.6/cmd/utils/simplebenchserver) servers as backends for a HTTP target:
 
 ```
-bombardier -l http://127.0.0.1:8080
+bombardier http://127.0.0.1:8080 --latencies --fasthttp -H "Connection: close"
 Bombarding http://127.0.0.1:8080 for 10s using 125 connection(s)
-[========================================================================================] 10s
+[=========================================================================================] 10s
 Done!
 Statistics        Avg      Stdev        Max
-  Reqs/sec     10909.76     867.06   12564.59
-  Latency       11.46ms     1.05ms    54.33ms
+  Reqs/sec     33770.46    1903.82   39659.95
+  Latency        3.70ms   246.44us    23.27ms
   Latency Distribution
-     50%    11.35ms
-     75%    11.86ms
-     90%    12.35ms
-     95%    12.67ms
-     99%    13.83ms
+     50%     3.64ms
+     75%     3.78ms
+     90%     3.97ms
+     95%     4.15ms
+     99%     4.83ms
   HTTP codes:
-    1xx - 0, 2xx - 108998, 3xx - 0, 4xx - 0, 5xx - 0
+    1xx - 0, 2xx - 337288, 3xx - 0, 4xx - 0, 5xx - 0
     others - 0
-  Throughput:    12.38MB/s
+  Throughput:    40.01MB/s
 ```
 
 ### nginx
@@ -136,7 +136,7 @@ Statistics        Avg      Stdev        Max
 Using the same two backend servers and a single worker process for `nginx`
 
 ```
-bombardier -l http://127.0.0.1:8080
+bombardier http://127.0.0.1:8080 --latencies --fasthttp -H "Connection: close"
 Bombarding http://127.0.0.1:8080 for 10s using 125 connection(s)
 [========================================================================================] 10s
 Done!
@@ -157,4 +157,4 @@ Statistics        Avg      Stdev        Max
 
 Something to note is that `gruglb` does not have the concept of `worker_processes` like `nginx` does.
 
-This was ran with the default of a single process, it performs even better with multiple.
+This was ran with the default of a single process, it performs even better with multiple (~85k req/s).
