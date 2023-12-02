@@ -21,6 +21,10 @@ pub struct Config {
     /// Log level of the application, defaults to INFO.
     pub logging: Option<String>,
 
+    /// Controls whether to run a graceful shutdown period on receiving a termination
+    /// signal.
+    pub graceful_shutdown: Option<bool>,
+
     /// Interval, in seconds, to conduct health checks against all configured targets.
     /// Defaults to every 10 seconds when unset.
     pub health_check_interval: Option<u8>,
@@ -122,6 +126,12 @@ impl Config {
             "INFO" => LevelFilter::INFO,
             _ => LevelFilter::INFO,
         }
+    }
+
+    /// Utility for ensuring that `true` is provided when not specified for the
+    /// `graceful_shutdown` configuration option.
+    pub fn graceful_shutdown(&self) -> bool {
+        self.graceful_shutdown.unwrap_or(true)
     }
 
     /// Retrieve the health_check_interval as a Duration, ready to use within

@@ -25,12 +25,20 @@ impl HttpProxy {
     async fn construct_response(response: Response) -> Result<String> {
         let http_version = response.version();
         let status = response.status();
+        let headers = response.headers();
+        let mut header = String::default();
+
+        // Construct headers that were in the response from the backend.
+        // The `\r\n` at the beginning is important to separate header key-value
+        // items from each other.
+        for header_key in headers.keys() {
+            if let Some(value) = headers.get(header_key) {
+                header.push_str(&format!("\r\n{}: {}", header_key, value.to_str().unwrap()));
+            }
+        }
         let response_body = response.text().await?;
-        let status_line = format!("{:?} {} OK", http_version, status);
-        let content_len = format!("Content-Length: {}", response_body.len());
-
-        let response = format!("{status_line}\r\n{content_len}\r\n\r\n{response_body}");
-
+        let status_line = format!("{:?} {}", http_version, status);
+        let response = format!("{status_line}{header}\r\n\r\n{response_body}");
         Ok(response)
     }
 }
