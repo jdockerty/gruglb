@@ -42,7 +42,7 @@ pub async fn run() -> Result<()> {
                     println!("Incoming from {}", addr);
                 }
                 let response =
-                    format!("{status_line}\r\nContent-Length: {length}\nContent-Type: text/plain\r\n\r\n{msg}");
+                    format!("{status_line}\r\nContent-Length: {length}\r\nContent-Type: text/plain\r\n\r\n{msg}");
 
                 stream.write_all(response.as_bytes()).await?;
             }

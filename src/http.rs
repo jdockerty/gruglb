@@ -164,7 +164,7 @@ impl Proxy for HttpProxy {
                         .with_context(|| format!("unable to send response to {http_backend}"))?;
                     let response = HttpProxy::construct_response(backend_response).await?;
 
-                    connection.stream.write(response.as_bytes()).await?;
+                    connection.stream.write_all(response.as_bytes()).await?;
                 }
                 "POST" => {
                     let backend_response = connection
@@ -176,7 +176,7 @@ impl Proxy for HttpProxy {
                         .with_context(|| format!("unable to send response to {http_backend}"))?;
                     let response = HttpProxy::construct_response(backend_response).await?;
 
-                    connection.stream.write(response.as_bytes()).await?;
+                    connection.stream.write_all(response.as_bytes()).await?;
                 }
                 _ => {
                     error!("Unsupported: {method}")
