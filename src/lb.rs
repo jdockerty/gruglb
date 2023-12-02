@@ -25,9 +25,11 @@ pub struct LB {
 
 impl Drop for LB {
     fn drop(&mut self) {
+        info!("Load balancer shut down, all operations completed.");
         if let Some(targets) = self.conf.targets.clone() {
+            debug!("Configured targets:");
             for (name, target) in targets {
-                info!("{name}:{target:?}");
+                debug!("{name}:{target:?}");
             }
         }
     }
