@@ -11,6 +11,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -39,14 +40,21 @@ impl Proxy for HttpProxy {
     async fn accept(
         listeners: Vec<(String, TcpListener)>,
         current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+        cancel: CancellationToken,
     ) -> Result<()> {
         let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
         for (name, listener) in listeners {
             let idx = idx.clone();
             let client = Arc::new(reqwest::Client::new());
             let current_healthy_targets = current_healthy_targets.clone();
+            let cancel = cancel.clone();
             tokio::spawn(async move {
                 while let Ok((mut stream, address)) = listener.accept().await {
+                    if cancel.is_cancelled() {
+                        info!("[CANCEL] Received cancel, no longer receiving any HTTP requests.");
+                        stream.shutdown().await.unwrap();
+                        break;
+                    }
                     let name = name.clone();
                     let idx = Arc::clone(&idx);
                     let current_healthy_targets = Arc::clone(&current_healthy_targets);

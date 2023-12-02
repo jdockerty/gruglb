@@ -137,8 +137,7 @@ mod tests {
 
     fn get_config() -> Config {
         let test_config = File::open("tests/fixtures/example-config.yaml").unwrap();
-        let conf = new(test_config).unwrap();
-        conf
+        new(test_config).unwrap()
     }
 
     #[test]

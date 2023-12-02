@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
@@ -20,6 +21,16 @@ pub type RecvTargets = Receiver<Vec<Health>>;
 pub struct LB {
     pub conf: Arc<Config>,
     pub current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+}
+
+impl Drop for LB {
+    fn drop(&mut self) {
+        if let Some(targets) = self.conf.targets.clone() {
+            for (name, target) in targets {
+                info!("{name}:{target:?}");
+            }
+        }
+    }
 }
 
 /// Construct a new instance of gruglb
@@ -36,7 +47,12 @@ pub fn new(conf: Config) -> LB {
 
 impl LB {
     /// Run the application.
-    pub async fn run(&self, sender: SendTargets, mut receiver: RecvTargets) -> Result<()> {
+    pub async fn run(
+        &self,
+        sender: SendTargets,
+        mut receiver: RecvTargets,
+        cancel_token: CancellationToken,
+    ) -> Result<()> {
         if let Some(target_names) = self.conf.target_names() {
             debug!("All loaded targets {:?}", target_names);
         }
@@ -50,49 +66,18 @@ impl LB {
         let healthy_targets = Arc::clone(&self.current_healthy_targets);
 
         // Continually receive from the channel and update our healthy backend state.
+        let health_recv_token = cancel_token.clone();
         task::spawn(async move {
             while let Some(results) = receiver.recv().await {
-                for health_result in results {
-                    match health_result {
-                        Health::Success(state) => {
-                            let target_name = state.target_name.clone();
-                            let backend = state.backend.clone();
-
-                            // Default is a Vec<Backend>, so inserts an empty Vec if not present.
-                            let mut backends = healthy_targets.entry(target_name).or_default();
-
-                            if !backends.iter().any(|b| b == &backend) {
-                                info!("({}, {}) not in pool, adding", state.target_name, backend);
-                                backends.push(backend);
-                            } else {
-                                info!(
-                                    "({}, {}) exists in healthy state, nothing to do",
-                                    state.target_name, backend
-                                );
-                            }
-                        }
-                        Health::Failure(state) => {
-                            let target_name = state.target_name.clone();
-                            let backend = state.backend.clone();
-
-                            // Default is a Vec<Backend>, so inserts an empty Vec if not present.
-                            let mut backends = healthy_targets.entry(target_name).or_default();
-
-                            if let Some(idx) = backends.iter().position(|b| b == &backend) {
-                                info!(
-                                    "({}, {}) is unhealthy, removing from pool",
-                                    state.target_name, backend
-                                );
-                                backends.remove(idx);
-                            } else {
-                                info!(
-                                    "({}, {}) still unhealthy, nothing to do",
-                                    state.target_name, backend
-                                );
-                            }
-                        }
+                if health_recv_token.is_cancelled() {
+                    info!("[CANCEL] Running final health check operation");
+                    receiver.close();
+                    while let Some(final_results) = receiver.recv().await {
+                        LB::handle_health_results(final_results, healthy_targets.clone());
                     }
+                    break;
                 }
+                LB::handle_health_results(results, healthy_targets.clone());
             }
         });
 
@@ -117,12 +102,73 @@ impl LB {
             )
             .await?;
 
-        info!("Accepting tcp!");
-        TcpProxy::accept(tcp_listeners, Arc::clone(&self.current_healthy_targets)).await?;
+        info!("Starting TCP!");
+        let tcp_cancel_token = cancel_token.clone();
+        TcpProxy::accept(
+            tcp_listeners,
+            Arc::clone(&self.current_healthy_targets),
+            tcp_cancel_token,
+        )
+        .await?;
 
-        info!("Accepting http!");
-        HttpProxy::accept(http_listeners, Arc::clone(&self.current_healthy_targets)).await?;
+        info!("Starting HTTP!");
+        let http_cancel_token = cancel_token.clone();
+        HttpProxy::accept(
+            http_listeners,
+            Arc::clone(&self.current_healthy_targets),
+            http_cancel_token,
+        )
+        .await?;
+
         Ok(())
+    }
+
+    /// Utility function to handle the health check results.
+    fn handle_health_results(
+        results: Vec<Health>,
+        healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+    ) {
+        for health_result in results {
+            match health_result {
+                Health::Success(state) => {
+                    let target_name = state.target_name.clone();
+                    let backend = state.backend.clone();
+
+                    // Default is a Vec<Backend>, so inserts an empty Vec if not present.
+                    let mut backends = healthy_targets.entry(target_name).or_default();
+
+                    if !backends.iter().any(|b| b == &backend) {
+                        info!("({}, {}) not in pool, adding", state.target_name, backend);
+                        backends.push(backend);
+                    } else {
+                        info!(
+                            "({}, {}) exists in healthy state, nothing to do",
+                            state.target_name, backend
+                        );
+                    }
+                }
+                Health::Failure(state) => {
+                    let target_name = state.target_name.clone();
+                    let backend = state.backend.clone();
+
+                    // Default is a Vec<Backend>, so inserts an empty Vec if not present.
+                    let mut backends = healthy_targets.entry(target_name).or_default();
+
+                    if let Some(idx) = backends.iter().position(|b| b == &backend) {
+                        info!(
+                            "({}, {}) is unhealthy, removing from pool",
+                            state.target_name, backend
+                        );
+                        backends.remove(idx);
+                    } else {
+                        info!(
+                            "({}, {}) still unhealthy, nothing to do",
+                            state.target_name, backend
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// Generate `TcpListener`'s for a `protocol_type`.

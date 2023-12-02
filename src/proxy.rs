@@ -8,6 +8,7 @@ use std::{sync::Arc, vec};
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 /// Proxy is used to encompass common functionality between L4 and L7 load balancing.
@@ -22,6 +23,7 @@ pub trait Proxy {
     async fn accept(
         listeners: Vec<(String, TcpListener)>,
         current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+        cancel: CancellationToken,
     ) -> Result<()>;
 
     /// Proxy a `TcpStream` from an incoming connection to configured targets, with accompanying
@@ -72,8 +74,12 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
         let health_client = reqwest::Client::new();
         loop {
             interval.tick().await;
-
             let mut results: Vec<Health> = vec![];
+
+            if sender.is_closed() {
+                info!("[CANCEL] No more health checks will be sent.");
+                break;
+            }
 
             for (name, target) in targets {
                 match target.protocol_type() {
