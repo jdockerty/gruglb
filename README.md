@@ -117,18 +117,18 @@ Bombarding http://127.0.0.1:8080 for 10s using 125 connection(s)
 [=========================================================================================] 10s
 Done!
 Statistics        Avg      Stdev        Max
-  Reqs/sec     33770.46    1903.82   39659.95
-  Latency        3.70ms   246.44us    23.27ms
+  Reqs/sec     34000.50    1663.16   39891.49
+  Latency        3.67ms   205.64us    21.55ms
   Latency Distribution
-     50%     3.64ms
-     75%     3.78ms
-     90%     3.97ms
-     95%     4.15ms
-     99%     4.83ms
+     50%     3.63ms
+     75%     3.76ms
+     90%     3.93ms
+     95%     4.07ms
+     99%     4.55ms
   HTTP codes:
-    1xx - 0, 2xx - 337288, 3xx - 0, 4xx - 0, 5xx - 0
+    1xx - 0, 2xx - 339622, 3xx - 0, 4xx - 0, 5xx - 0
     others - 0
-  Throughput:    40.01MB/s
+  Throughput:    40.22MB/s
 ```
 
 ### nginx
