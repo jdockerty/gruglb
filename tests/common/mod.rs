@@ -25,6 +25,7 @@ impl Drop for Helper {
     }
 }
 
+#[allow(dead_code)]
 pub fn test_targets_config() -> config::Config {
     let fake_conf =
         File::open("tests/fixtures/example-config.yaml").expect("unable to open example config");
@@ -32,6 +33,7 @@ pub fn test_targets_config() -> config::Config {
     config::new(fake_conf).unwrap()
 }
 
+#[allow(dead_code)]
 pub fn test_http_config() -> config::Config {
     let fake_conf = File::open("tests/fixtures/http.yaml").expect("unable to open http config");
 
