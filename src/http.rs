@@ -107,10 +107,7 @@ impl Proxy for HttpProxy {
 
     async fn proxy(mut connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()> {
         if let Some(backends) = connection.targets.get(&connection.target_name) {
-            let backends = backends.to_vec();
-            debug!("Backends configured {:?}", &backends);
             let backend_count = backends.len();
-
             if backend_count == 0 {
                 info!(
                     "[HTTP] No routable backends for {}, nothing to do",
@@ -118,6 +115,7 @@ impl Proxy for HttpProxy {
                 );
                 return Ok(());
             }
+            debug!("Backends configured {:?}", &backends);
 
             // Limit the scope of the index write lock.
             let http_backend: String;

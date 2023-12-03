@@ -73,10 +73,7 @@ impl Proxy for TcpProxy {
 
     async fn proxy(mut connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()> {
         if let Some(backends) = connection.targets.get(&connection.target_name) {
-            let backends = backends.to_vec();
-            debug!("Backends configured {:?}", &backends);
             let backend_count = backends.len();
-
             if backend_count == 0 {
                 info!(
                     "[TCP] No routable backends for {}, nothing to do",
@@ -84,6 +81,7 @@ impl Proxy for TcpProxy {
                 );
                 return Ok(());
             }
+            debug!("Backends configured {:?}", &backends);
 
             // Limit the scope of the index write lock.
             let backend_addr: String;

@@ -99,6 +99,7 @@ Hello from fake-2
 
 - Round-robin load balancing of HTTP/TCP connections.
 - Health checks for HTTP/TCP targets.
+- Graceful termination.
 
 ## Performance
 
