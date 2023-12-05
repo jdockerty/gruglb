@@ -35,19 +35,18 @@ impl Drop for LB {
     }
 }
 
-/// Construct a new instance of gruglb
-pub fn new(conf: Config) -> LB {
-    let _ = FmtSubscriber::builder()
-        .with_max_level(conf.log_level())
-        .try_init();
-
-    LB {
-        conf: Arc::new(conf),
-        current_healthy_targets: Arc::new(DashMap::new()),
-    }
-}
-
 impl LB {
+    /// Construct a new instance of gruglb
+    pub fn new(conf: Config) -> LB {
+        let _ = FmtSubscriber::builder()
+            .with_max_level(conf.log_level())
+            .try_init();
+
+        LB {
+            conf: Arc::new(conf),
+            current_healthy_targets: Arc::new(DashMap::new()),
+        }
+    }
     /// Run the application.
     pub async fn run(
         &self,

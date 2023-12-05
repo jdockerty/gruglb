@@ -21,6 +21,7 @@ pub trait Proxy {
     ///
     /// This is limited to TCP-oriented connections, e.g. TCP and HTTP.
     async fn accept(
+        &'static self,
         listeners: Vec<(String, TcpListener)>,
         current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
         cancel: CancellationToken,
@@ -28,7 +29,11 @@ pub trait Proxy {
 
     /// Proxy a `TcpStream` from an incoming connection to configured targets, with accompanying
     /// `Connection` related data.
-    async fn proxy(mut connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()>;
+    async fn proxy(
+        &'static self,
+        mut connection: Connection,
+        routing_idx: Arc<RwLock<usize>>,
+    ) -> Result<()>;
 }
 
 /// Contains useful contextual information about a conducted health check.

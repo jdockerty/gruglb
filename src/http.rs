@@ -18,9 +18,19 @@ use tracing::info;
 
 /// `HttpProxy` is used as a concrete implementation of the `Proxy` trait for HTTP
 /// connection proxying to configured targets.
+#[derive(Debug)]
 pub struct HttpProxy {}
 
+impl Default for HttpProxy {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
 impl HttpProxy {
+    pub fn new() -> &'static HttpProxy {
+        return &Self {};
+    }
     /// Helper for creating the relevant HTTP response to write into a `TcpStream`.
     async fn construct_response(response: Response) -> Result<String> {
         let http_version = response.version();
@@ -46,6 +56,7 @@ impl HttpProxy {
 #[async_trait]
 impl Proxy for HttpProxy {
     async fn accept(
+        &'static self,
         listeners: Vec<(String, TcpListener)>,
         current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
         cancel: CancellationToken,
@@ -97,7 +108,7 @@ impl Proxy for HttpProxy {
                             request_path: Some(path),
                             stream,
                         };
-                        HttpProxy::proxy(connection, idx).await.unwrap();
+                        self.proxy(connection, idx).await.unwrap();
                     });
                 }
             });
@@ -105,7 +116,11 @@ impl Proxy for HttpProxy {
         Ok(())
     }
 
-    async fn proxy(mut connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()> {
+    async fn proxy(
+        &'static self,
+        mut connection: Connection,
+        routing_idx: Arc<RwLock<usize>>,
+    ) -> Result<()> {
         if let Some(backends) = connection.targets.get(&connection.target_name) {
             let backend_count = backends.len();
             if backend_count == 0 {
