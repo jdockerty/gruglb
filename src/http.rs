@@ -21,15 +21,9 @@ use tracing::info;
 #[derive(Debug)]
 pub struct HttpProxy {}
 
-impl Default for HttpProxy {
-    fn default() -> Self {
-        Self {}
-    }
-}
-
 impl HttpProxy {
     pub fn new() -> &'static HttpProxy {
-        return &Self {};
+        &Self {}
     }
     /// Helper for creating the relevant HTTP response to write into a `TcpStream`.
     async fn construct_response(response: Response) -> Result<String> {

@@ -21,13 +21,7 @@ pub struct TcpProxy {}
 
 impl TcpProxy {
     pub fn new() -> &'static TcpProxy {
-        return &Self {};
-    }
-}
-
-impl Default for TcpProxy {
-    fn default() -> Self {
-        Self {}
+        &Self {}
     }
 }
 
