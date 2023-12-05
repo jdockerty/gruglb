@@ -34,7 +34,11 @@ The configuration is defined in YAML, using the `example-config.yaml` that is us
 
 ```yaml
 # The interval, in seconds, to conduct HTTP/TCP health checks.
-health_check_interval: 5
+health_check_interval: 2
+
+# Run a graceful shutdown period of 30 seconds to terminate separate worker threads.
+# Defaults to true.
+graceful_shutdown: true
 
 # Log level information, defaults to 'info'
 logging: info
