@@ -98,6 +98,21 @@ pub fn new(config_file: File) -> Result<Config> {
 }
 
 impl Config {
+    /// Used for ensuring whether a particular type of proxy is required or not.
+    /// This is helpful in initialising particular proxies dependent on a provided
+    /// configuration.
+    pub fn requires_proxy_type(&self, protocol: Protocol) -> bool {
+        if let Some(targets) = &self.targets {
+            for target in targets.values() {
+                if target.protocol_type() == protocol {
+                    return true;
+                }
+            }
+            return false;
+        }
+        false
+    }
+
     /// Retrieve a list of names given to targets.
     pub fn target_names(&self) -> Option<Vec<String>> {
         if let Some(targets) = &self.targets {

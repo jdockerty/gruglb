@@ -104,23 +104,29 @@ impl LB {
             )
             .await?;
 
-        info!("Starting TCP!");
-        let tcp_cancel_token = cancel_token.clone();
-        TcpProxy::accept(
-            tcp_listeners,
-            Arc::clone(&self.current_healthy_targets),
-            tcp_cancel_token,
-        )
-        .await?;
+        if self.conf.requires_proxy_type(Protocol::Tcp) {
+            info!("Starting TCP!");
+            let tcp_cancel_token = cancel_token.clone();
+            let tcp = TcpProxy::new();
+            tcp.accept(
+                tcp_listeners,
+                Arc::clone(&self.current_healthy_targets),
+                tcp_cancel_token,
+            )
+            .await?;
+        }
 
-        info!("Starting HTTP!");
-        let http_cancel_token = cancel_token.clone();
-        HttpProxy::accept(
-            http_listeners,
-            Arc::clone(&self.current_healthy_targets),
-            http_cancel_token,
-        )
-        .await?;
+        if self.conf.requires_proxy_type(Protocol::Http) {
+            info!("Starting HTTP!");
+            let http_cancel_token = cancel_token.clone();
+            let http = HttpProxy::new();
+            http.accept(
+                http_listeners,
+                Arc::clone(&self.current_healthy_targets),
+                http_cancel_token,
+            )
+            .await?;
+        }
 
         Ok(())
     }
