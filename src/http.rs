@@ -22,6 +22,10 @@ use tracing::info;
 pub struct HttpProxy {}
 
 impl HttpProxy {
+    // Return a new instance of `HttpProxy`.
+    //
+    // `HttpProxy` has a static lifetime as it exists the entire duration of the
+    // application's active lifecycle.
     pub fn new() -> &'static HttpProxy {
         &Self {}
     }

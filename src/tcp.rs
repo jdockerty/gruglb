@@ -20,6 +20,10 @@ use tracing::info;
 pub struct TcpProxy {}
 
 impl TcpProxy {
+    // Return a new instance of `TcpProxy`.
+    //
+    // `TcpProxy` has a static lifetime as it exists the entire duration of the
+    // application's active lifecycle.
     pub fn new() -> &'static TcpProxy {
         &Self {}
     }
