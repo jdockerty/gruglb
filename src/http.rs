@@ -23,15 +23,20 @@ use tracing::info;
 pub struct HttpProxy {}
 
 impl HttpProxy {
-    // Return a new instance of `HttpProxy`.
-    //
-    // `HttpProxy` has a static lifetime as it exists the entire duration of the
-    // application's active lifecycle.
+    /// Return a new instance of `HttpProxy`.
+    ///
+    /// `HttpProxy` has a static lifetime as it exists the entire duration of the
+    /// application's active lifecycle.
     pub fn new() -> &'static HttpProxy {
         &Self {}
     }
+
+    // TODO: Pass connection here for specific HTTP requirement for request_path and method,
+    // rather than doing it inline of the proxy func.
+    // async fn construct_request_path_and_method(&self, mut connection: Connection) -> (String, String) {}
+
     /// Helper for creating the relevant HTTP response to write into a `TcpStream`.
-    async fn construct_response(response: Response) -> Result<String> {
+    async fn construct_response(&self, response: Response) -> Result<String> {
         let http_version = response.version();
         let status = response.status();
         let headers = response.headers();
@@ -81,34 +86,12 @@ impl Proxy for HttpProxy {
                     let idx = Arc::clone(&idx);
                     let current_healthy_targets = Arc::clone(&current_healthy_targets);
                     info!("Incoming HTTP request from {address}");
-                    let buf = BufReader::new(&mut stream);
-                    let mut lines = buf.lines();
-                    let mut http_request: Vec<String> = vec![];
-
-                    while let Some(line) = lines.next_line().await.unwrap() {
-                        if line.is_empty() {
-                            break;
-                        }
-                        http_request.push(line);
-                    }
-
-                    let info = http_request[0].clone();
-                    let http_info = info
-                        .split_whitespace()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>();
-
-                    let method = http_info[0].clone();
-                    let path = http_info[1].clone();
                     let client = client.clone();
                     tokio::spawn(async move {
-                        debug!("{method} request at {path}");
                         let connection = Connection {
                             client: Some(client),
                             targets: current_healthy_targets,
                             target_name: name,
-                            method: Some(method),
-                            request_path: Some(path),
                             stream,
                         };
                         self.proxy(connection, idx).await.unwrap();

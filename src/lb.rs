@@ -119,12 +119,19 @@ impl LB {
             info!("Starting HTTP!");
             let http_cancel_token = cancel_token.clone();
             let http = HttpProxy::new();
-            http.accept(
+            proxy::accept(
+                http,
                 http_listeners,
                 Arc::clone(&self.current_healthy_targets),
                 http_cancel_token,
             )
             .await?;
+            //http.accept(
+            //    http_listeners,
+            //    Arc::clone(&self.current_healthy_targets),
+            //    http_cancel_token,
+            //)
+            //.await?;
         }
 
         Ok(())

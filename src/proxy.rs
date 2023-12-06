@@ -34,6 +34,58 @@ pub trait Proxy {
         mut connection: Connection,
         routing_idx: Arc<RwLock<usize>>,
     ) -> Result<()>;
+
+    /// Retrieve the type of protocol in use by the current proxy.
+    fn protocol_type(&self) -> Protocol;
+}
+
+pub async fn accept<P>(
+    proxy: &'static P,
+    listeners: Vec<(String, TcpListener)>,
+    current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+    cancel: CancellationToken,
+) -> Result<()>
+where
+    P: Proxy + Send + Sync,
+{
+    let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
+    for (name, listener) in listeners {
+        let idx = idx.clone();
+        let client = Arc::new(reqwest::Client::new());
+        let current_healthy_targets = current_healthy_targets.clone();
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            while let Ok((mut stream, address)) = listener.accept().await {
+                if cancel.is_cancelled() {
+                    info!(
+                        "[CANCEL] Received cancel, no longer receiving any {} requests.",
+                        proxy.protocol_type()
+                    );
+                    stream.shutdown().await.unwrap();
+                    break;
+                }
+                let name = name.clone();
+                let idx = Arc::clone(&idx);
+                let current_healthy_targets = Arc::clone(&current_healthy_targets);
+                info!(
+                    "[{}] Incoming request from {address}",
+                    proxy.protocol_type()
+                );
+                let client = client.clone();
+                tokio::spawn(async move {
+                    // debug!("{method} request at {path}");
+                    let connection = Connection {
+                        client: Some(client),
+                        targets: current_healthy_targets,
+                        target_name: name,
+                        stream,
+                    };
+                    proxy.proxy(connection, idx).await.unwrap();
+                });
+            }
+        });
+    }
+    Ok(())
 }
 
 /// Contains useful contextual information about a conducted health check.
