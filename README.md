@@ -116,7 +116,7 @@ Using [`bombardier`](https://github.com/codesenberg/bombardier/) as the tool of 
 
 <details>
 
-  <summary> Running against `localhost` </summary>
+ <summary> Running on localhost </summary>
 
 Using two [`simplebenchserver`](https://pkg.go.dev/github.com/codesenberg/bombardier@v1.2.6/cmd/utils/simplebenchserver) servers as backends for a HTTP target:
 
@@ -143,12 +143,10 @@ Statistics        Avg      Stdev        Max
 
 <details>
 
- <summary> Running on AWS `m5.xlarge` nodes </summary>
+ <summary> Running on AWS with m5.xlarge nodes </summary>
 
-This test was performed with 4 nodes: 1 for the load balancer, 2 backend servers running the `simplebenchserver`, and 1 node used to
-send traffic internally to the load balancer.
+This test was performed with 4 nodes: 1 for the load balancer, 2 backend servers running a slightly modified version of `simplebenchserver` which allows binding to `0.0.0.0`, and 1 node used to send traffic internally to the load balancer.
 
-TODO:
 ```
 bombardier http://172.31.22.113:8080 --latencies --fasthttp -H "Connection: close"
 Bombarding http://172.31.22.113:8080 for 10s using 125 connection(s)
@@ -202,7 +200,7 @@ http {
 
 <details>
 
- <summary> Running against `localhost` </summary>
+ <summary> Running on localhost </summary>
 
 Using the same two backend servers and a single worker process for `nginx`
 
@@ -234,10 +232,9 @@ This was ran with the default of a single process, it performs even better with 
 
 <details>
 
- <summary> Running on AWS `m5.xlarge` nodes </summary>
+ <summary> Running on AWS with m5.xlarge nodes </summary>
 
-This test was performed with 4 nodes: 1 for the load balancer, 2 backend servers running the `simplebenchserver`, and 1 node used to
-send traffic internally to the load balancer.
+This test was performed with 4 nodes: 1 for the load balancer, 2 backend servers running a slightly modified version of `simplebenchserver` which allows binding to `0.0.0.0`, and 1 node used to send traffic internally to the load balancer.
 
 Again, using the default of `worker_processes 1;`
 
