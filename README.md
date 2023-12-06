@@ -119,21 +119,21 @@ Using two [`simplebenchserver`](https://pkg.go.dev/github.com/codesenberg/bombar
 ```
 bombardier http://127.0.0.1:8080 --latencies --fasthttp -H "Connection: close"
 Bombarding http://127.0.0.1:8080 for 10s using 125 connection(s)
-[=========================================================================================] 10s
+[========================================================================================] 10s
 Done!
 Statistics        Avg      Stdev        Max
-  Reqs/sec     34000.50    1663.16   39891.49
-  Latency        3.67ms   205.64us    21.55ms
+  Reqs/sec     40954.38    2857.90   45273.78
+  Latency        3.05ms   485.51us    36.43ms
   Latency Distribution
-     50%     3.63ms
-     75%     3.76ms
-     90%     3.93ms
-     95%     4.07ms
-     99%     4.55ms
+     50%     2.97ms
+     75%     3.32ms
+     90%     3.75ms
+     95%     4.13ms
+     99%     5.28ms
   HTTP codes:
-    1xx - 0, 2xx - 339622, 3xx - 0, 4xx - 0, 5xx - 0
+    1xx - 0, 2xx - 408841, 3xx - 0, 4xx - 0, 5xx - 0
     others - 0
-  Throughput:    40.22MB/s
+  Throughput:    48.42MB/s
 ```
 
 ### nginx
