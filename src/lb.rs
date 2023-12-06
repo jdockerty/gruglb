@@ -91,7 +91,9 @@ impl LB {
                         // check duration.
                         tokio::time::sleep(Duration::from_millis(500)).await;
                     }
-                    Err(TryRecvError::Disconnected) => error!("Tried to read from channel after cancel was received from sender!")
+                    Err(TryRecvError::Disconnected) => {
+                        error!("Tried to read from channel after cancel was received from sender!")
+                    }
                 }
             }
         });

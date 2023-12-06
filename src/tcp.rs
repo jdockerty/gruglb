@@ -28,7 +28,6 @@ impl TcpProxy {
 
 #[async_trait]
 impl Proxy for TcpProxy {
-
     fn protocol_type(&self) -> Protocol {
         Protocol::Tcp
     }
