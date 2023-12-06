@@ -1,4 +1,5 @@
 use crate::config::Backend;
+use crate::config::Protocol;
 use crate::proxy::Connection;
 use crate::proxy::Proxy;
 use anyhow::{Context, Result};
@@ -53,6 +54,10 @@ impl HttpProxy {
 
 #[async_trait]
 impl Proxy for HttpProxy {
+    fn protocol_type(&self) -> Protocol {
+        Protocol::Http
+    }
+
     async fn accept(
         &'static self,
         listeners: Vec<(String, TcpListener)>,
@@ -123,12 +128,33 @@ impl Proxy for HttpProxy {
             let backend_count = backends.len();
             if backend_count == 0 {
                 info!(
-                    "[HTTP] No routable backends for {}, nothing to do",
+                    "[{}] No routable backends for {}, nothing to do",
+                    self.protocol_type(),
                     &connection.target_name
                 );
                 return Ok(());
             }
             debug!("Backends configured {:?}", &backends);
+
+            let buf = BufReader::new(&mut connection.stream);
+            let mut lines = buf.lines();
+            let mut http_request: Vec<String> = vec![];
+
+            while let Some(line) = lines.next_line().await.unwrap() {
+                if line.is_empty() {
+                    break;
+                }
+                http_request.push(line);
+            }
+
+            let info = http_request[0].clone();
+            let http_info = info
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
+
+            let method = http_info[0].clone();
+            let request_path = http_info[1].clone();
 
             // Limit the scope of the index write lock.
             let http_backend: String;
@@ -136,7 +162,8 @@ impl Proxy for HttpProxy {
                 let mut idx = routing_idx.write().await;
 
                 debug!(
-                    "[HTTP] {backend_count} backends configured for {}, current index {idx}",
+                    "[{}] {backend_count} backends configured for {}, current index {idx}",
+                    self.protocol_type(),
                     &connection.target_name
                 );
 
@@ -147,9 +174,7 @@ impl Proxy for HttpProxy {
 
                 http_backend = format!(
                     "http://{}:{}{}",
-                    backends[*idx].host,
-                    backends[*idx].port,
-                    connection.request_path.unwrap()
+                    backends[*idx].host, backends[*idx].port, request_path
                 );
 
                 // Increment a shared index after we've constructed our current connection
@@ -157,9 +182,12 @@ impl Proxy for HttpProxy {
                 *idx += 1;
             }
 
-            info!("[HTTP] Attempting to connect to {}", &http_backend);
+            info!(
+                "[{}] Attempting to connect to {}",
+                self.protocol_type(),
+                &http_backend
+            );
 
-            let method = connection.method.unwrap();
             match method.as_str() {
                 "GET" => {
                     let backend_response = connection
@@ -169,7 +197,7 @@ impl Proxy for HttpProxy {
                         .send()
                         .await
                         .with_context(|| format!("unable to send response to {http_backend}"))?;
-                    let response = HttpProxy::construct_response(backend_response).await?;
+                    let response = self.construct_response(backend_response).await?;
 
                     connection.stream.write_all(response.as_bytes()).await?;
                 }
@@ -181,7 +209,7 @@ impl Proxy for HttpProxy {
                         .send()
                         .await
                         .with_context(|| format!("unable to send response to {http_backend}"))?;
-                    let response = HttpProxy::construct_response(backend_response).await?;
+                    let response = self.construct_response(backend_response).await?;
 
                     connection.stream.write_all(response.as_bytes()).await?;
                 }
@@ -189,9 +217,13 @@ impl Proxy for HttpProxy {
                     error!("Unsupported: {method}")
                 }
             }
-            info!("[HTTP] response sent to {}", &http_backend);
+            info!(
+                "[{}] response sent to {}",
+                self.protocol_type(),
+                &http_backend
+            );
         } else {
-            info!("[HTTP] No backend configured");
+            info!("[{}] No backend configured", self.protocol_type());
         };
 
         Ok(())

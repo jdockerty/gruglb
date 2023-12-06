@@ -1,4 +1,5 @@
 use crate::config::Backend;
+use crate::config::Protocol;
 use crate::proxy::Connection;
 use crate::proxy::Proxy;
 use anyhow::Result;
@@ -20,10 +21,10 @@ use tracing::info;
 pub struct TcpProxy {}
 
 impl TcpProxy {
-    // Return a new instance of `TcpProxy`.
-    //
-    // `TcpProxy` has a static lifetime as it exists the entire duration of the
-    // application's active lifecycle.
+    /// Return a new instance of `TcpProxy`.
+    ///
+    /// `TcpProxy` has a static lifetime as it exists the entire duration of the
+    /// application's active lifecycle.
     pub fn new() -> &'static TcpProxy {
         &Self {}
     }
@@ -31,6 +32,10 @@ impl TcpProxy {
 
 #[async_trait]
 impl Proxy for TcpProxy {
+    fn protocol_type(&self) -> Protocol {
+        Protocol::Tcp
+    }
+
     async fn accept(
         &'static self,
         listeners: Vec<(String, TcpListener)>,
@@ -67,8 +72,6 @@ impl Proxy for TcpProxy {
                         stream,
                         client: None,
                         target_name,
-                        method: None,
-                        request_path: None,
                     };
 
                     tokio::spawn(async move {

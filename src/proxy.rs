@@ -52,14 +52,13 @@ pub struct Connection {
 
     /// An optional HTTP client used to make requests.
     pub client: Option<Arc<reqwest::Client>>,
+    // An optional HTTP `method` for the connection, for example `GET`.
+    // This is only used for HTTP connections.
+    // pub method: Option<String>,
 
-    /// An optional HTTP `method` for the connection, for example `GET`.
-    /// This is only used for HTTP connections.
-    pub method: Option<String>,
-
-    /// An optional `request_path` for the connection, for example `/api/v1/users`.
-    /// This is only used for HTTP connections.
-    pub request_path: Option<String>,
+    // An optional `request_path` for the connection, for example `/api/v1/users`.
+    // This is only used for HTTP connections.
+    // pub request_path: Option<String>,
 }
 
 /// The resulting health check can either be a `Success` or `Failure` mode,
