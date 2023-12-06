@@ -1,17 +1,13 @@
-use crate::config::Backend;
 use crate::config::Protocol;
 use crate::proxy::Connection;
 use crate::proxy::Proxy;
 use anyhow::Result;
 use async_trait::async_trait;
-use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
-use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::info;
 
