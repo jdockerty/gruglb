@@ -1,16 +1,18 @@
 use crate::config::Protocol;
 use crate::config::{Backend, Config};
 use crate::http::HttpProxy;
-use crate::proxy::{self, Health, Proxy};
+use crate::proxy::{self, Health};
 use crate::tcp::TcpProxy;
 use anyhow::Result;
 use dashmap::DashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub type SendTargets = Sender<Vec<Health>>;
@@ -107,7 +109,8 @@ impl LB {
             info!("Starting TCP!");
             let tcp_cancel_token = cancel_token.clone();
             let tcp = TcpProxy::new();
-            tcp.accept(
+            proxy::accept(
+                tcp,
                 tcp_listeners,
                 Arc::clone(&self.current_healthy_targets),
                 tcp_cancel_token,
@@ -126,12 +129,6 @@ impl LB {
                 http_cancel_token,
             )
             .await?;
-            //http.accept(
-            //    http_listeners,
-            //    Arc::clone(&self.current_healthy_targets),
-            //    http_cancel_token,
-            //)
-            //.await?;
         }
 
         Ok(())

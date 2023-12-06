@@ -17,16 +17,6 @@ use tracing::{error, info};
 /// makes it possible.
 #[async_trait]
 pub trait Proxy {
-    /// Accepting a particular type of connection for configured listeners and targets.
-    ///
-    /// This is limited to TCP-oriented connections, e.g. TCP and HTTP.
-    async fn accept(
-        &'static self,
-        listeners: Vec<(String, TcpListener)>,
-        current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
-        cancel: CancellationToken,
-    ) -> Result<()>;
-
     /// Proxy a `TcpStream` from an incoming connection to configured targets, with accompanying
     /// `Connection` related data.
     async fn proxy(
@@ -39,6 +29,9 @@ pub trait Proxy {
     fn protocol_type(&self) -> Protocol;
 }
 
+/// Accepting a particular type of connection for configured listeners and targets.
+///
+/// This is limited to TCP-oriented connections, e.g. TCP and HTTP.
 pub async fn accept<P>(
     proxy: &'static P,
     listeners: Vec<(String, TcpListener)>,

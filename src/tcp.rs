@@ -32,60 +32,12 @@ impl TcpProxy {
 
 #[async_trait]
 impl Proxy for TcpProxy {
+
     fn protocol_type(&self) -> Protocol {
         Protocol::Tcp
     }
 
-    async fn accept(
-        &'static self,
-        listeners: Vec<(String, TcpListener)>,
-        current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
-        cancel: CancellationToken,
-    ) -> Result<()> {
-        let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
-
-        for (name, listener) in listeners {
-            // Listen to incoming traffic on separate threads
-            let idx = Arc::clone(&idx);
-            let current_healthy_targets = Arc::clone(&current_healthy_targets);
-            let cancel = cancel.clone();
-
-            tokio::spawn(async move {
-                while let Ok((mut stream, remote_peer)) = listener.accept().await {
-                    if cancel.is_cancelled() {
-                        info!(
-                            "[CANCEL] Received cancel, no longer accepting incoming TCP requests."
-                        );
-                        stream.shutdown().await.unwrap();
-                        break;
-                    }
-                    info!("Incoming request on {remote_peer}");
-
-                    let idx = Arc::clone(&idx);
-                    let tcp_targets = Arc::clone(&current_healthy_targets);
-                    // Pass the TCP streams over to separate threads to avoid
-                    // blocking and give each thread its copy of the configuration.
-                    let target_name = name.clone();
-
-                    let connection = Connection {
-                        targets: tcp_targets,
-                        stream,
-                        client: None,
-                        target_name,
-                    };
-
-                    tokio::spawn(async move {
-                        self.proxy(connection, idx).await.unwrap();
-                    })
-                    .await
-                    .unwrap();
-                }
-            });
-        }
-
-        Ok(())
-    }
-
+    /// Handles the proxying of TCP connections to configured targets.
     async fn proxy(
         &'static self,
         mut connection: Connection,
