@@ -12,6 +12,16 @@ pub enum Protocol {
     Unsupported,
 }
 
+impl Display for Protocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Tcp => write!(f, "TCP"),
+            Self::Http => write!(f, "HTTP"),
+            Self::Unsupported => write!(f, "Unsupported"),
+        }
+    }
+}
+
 // Represents the load balancer configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
