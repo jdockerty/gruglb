@@ -144,7 +144,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                 match health_client.get(request_addr).send().await {
                                     Ok(_response) => {
                                         info!("{request_addr} is healthy backend for {}", name);
-                                        info!("[HTTP] Sending success to channel");
+                                        info!("[HTTP] Pushing success");
 
                                         results.push(Health::Success(State {
                                             target_name: name.clone(),
@@ -157,7 +157,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                             target_name: name.clone(),
                                             backend: backend.clone(),
                                         }));
-                                        info!("[HTTP] Sending failure to channel");
+                                        info!("[HTTP] Pushing failure");
                                     }
                                 }
                             }
@@ -171,8 +171,9 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                 let request_addr = &format!("{}:{}", backend.host, backend.port);
 
                                 if let Ok(mut stream) = TcpStream::connect(request_addr).await {
-                                    info!("{request_addr} is healthy backend for {}", name);
                                     stream.shutdown().await.unwrap();
+                                    info!("{request_addr} is healthy backend for {}", name);
+                                    info!("[TCP] Pushing success");
                                     results.push(Health::Success(State {
                                         target_name: name.clone(),
                                         backend: backend.clone(),
@@ -181,6 +182,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                     info!(
                                         "({name}, {request_addr}) is unhealthy, removing from pool"
                                     );
+                                    info!("[TCP] Pushing failure");
                                     results.push(Health::Failure(State {
                                         target_name: name.clone(),
                                         backend: backend.clone(),
@@ -196,6 +198,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                     }
                 }
             }
+            info!("Sending targets to channel");
             sender.send(results).await.unwrap();
         }
     } else {

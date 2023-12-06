@@ -71,16 +71,28 @@ impl LB {
         // Continually receive from the channel and update our healthy backend state.
         let health_recv_token = cancel_token.clone();
         task::spawn(async move {
-            while let Some(results) = receiver.recv().await {
-                if health_recv_token.is_cancelled() {
-                    info!("[CANCEL] Running final health check operation");
-                    receiver.close();
-                    while let Some(final_results) = receiver.recv().await {
-                        LB::handle_health_results(final_results, healthy_targets.clone());
+            loop {
+                match receiver.try_recv() {
+                    Ok(results) => {
+                        if health_recv_token.is_cancelled() {
+                            info!("[CANCEL] Running final health check operation");
+                            receiver.close();
+                            while let Some(final_results) = receiver.recv().await {
+                                LB::handle_health_results(final_results, healthy_targets.clone());
+                            }
+                            return;
+                        }
+                        LB::handle_health_results(results, healthy_targets.clone());
                     }
-                    break;
+                    Err(TryRecvError::Empty) => {
+                        debug!("Empty, can receive!");
+                        // Pause for a static time to avoid overloading the Empty branch
+                        // when no messages have been sent, such as in a lengthy health
+                        // check duration.
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                    Err(TryRecvError::Disconnected) => error!("Tried to read from channel after cancel was received from sender!")
                 }
-                LB::handle_health_results(results, healthy_targets.clone());
             }
         });
 
