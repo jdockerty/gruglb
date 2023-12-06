@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
                 info!("Cancel operation received, waiting 30s before shutdown.");
                 // Display the shut down message 6 times, every 5 seconds before terminating.
                 for i in 1..=6 {
-                    info!("[{i}/6] Cancel operation received, terminating processes.");
+                    info!("[{i}/6] Cancel operation received, terminating threads.");
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
                 info!("30 second grace period has elapsed, shutting down.");

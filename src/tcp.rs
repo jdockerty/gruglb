@@ -1,77 +1,43 @@
-use crate::config::Backend;
+use crate::config::Protocol;
 use crate::proxy::Connection;
 use crate::proxy::Proxy;
 use anyhow::Result;
 use async_trait::async_trait;
-use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
-use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::info;
 
 /// `TcpProxy` is used as a concrete implementation of the `Proxy` trait for TCP
 /// connection proxying to configured targets.
+#[derive(Debug)]
 pub struct TcpProxy {}
+
+impl TcpProxy {
+    /// Return a new instance of `TcpProxy`.
+    ///
+    /// `TcpProxy` has a static lifetime as it exists the entire duration of the
+    /// application's active lifecycle.
+    pub fn new() -> &'static TcpProxy {
+        &Self {}
+    }
+}
 
 #[async_trait]
 impl Proxy for TcpProxy {
-    async fn accept(
-        listeners: Vec<(String, TcpListener)>,
-        current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
-        cancel: CancellationToken,
-    ) -> Result<()> {
-        let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
-
-        for (name, listener) in listeners {
-            // Listen to incoming traffic on separate threads
-            let idx = Arc::clone(&idx);
-            let current_healthy_targets = Arc::clone(&current_healthy_targets);
-            let cancel = cancel.clone();
-
-            tokio::spawn(async move {
-                while let Ok((mut stream, remote_peer)) = listener.accept().await {
-                    if cancel.is_cancelled() {
-                        info!(
-                            "[CANCEL] Received cancel, no longer accepting incoming TCP requests."
-                        );
-                        stream.shutdown().await.unwrap();
-                        break;
-                    }
-                    info!("Incoming request on {remote_peer}");
-
-                    let idx = Arc::clone(&idx);
-                    let tcp_targets = Arc::clone(&current_healthy_targets);
-                    // Pass the TCP streams over to separate threads to avoid
-                    // blocking and give each thread its copy of the configuration.
-                    let target_name = name.clone();
-
-                    let connection = Connection {
-                        targets: tcp_targets,
-                        stream,
-                        client: None,
-                        target_name,
-                        method: None,
-                        request_path: None,
-                    };
-
-                    tokio::spawn(async move {
-                        TcpProxy::proxy(connection, idx).await.unwrap();
-                    })
-                    .await
-                    .unwrap();
-                }
-            });
-        }
-
-        Ok(())
+    fn protocol_type(&self) -> Protocol {
+        Protocol::Tcp
     }
 
-    async fn proxy(mut connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()> {
+    /// Handles the proxying of TCP connections to configured targets.
+    async fn proxy(
+        &'static self,
+        mut connection: Connection,
+        routing_idx: Arc<RwLock<usize>>,
+    ) -> Result<()> {
         if let Some(backends) = connection.targets.get(&connection.target_name) {
             let backend_count = backends.len();
             if backend_count == 0 {

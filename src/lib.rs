@@ -7,6 +7,7 @@ pub mod tcp;
 
 use anyhow::Result;
 use clap::Parser;
+use lb::LB;
 use std::fs::File;
 use std::path::PathBuf;
 
@@ -19,10 +20,9 @@ struct Cli {
 }
 
 // Initialise core application logic and returning the load balancer ready to run.
-pub fn init() -> Result<lb::LB> {
+pub fn init() -> Result<LB> {
     let args = Cli::parse();
     let config_file = File::open(args.config)?;
-    let lb = lb::new(config::new(config_file)?);
 
-    Ok(lb)
+    Ok(LB::new(config::new(config_file)?))
 }

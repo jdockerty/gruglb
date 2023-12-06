@@ -1,4 +1,5 @@
 use assert_cmd::prelude::*;
+use gruglb::lb::LB;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -45,7 +46,7 @@ async fn register_healthy_targets() {
     let test_config = common::test_targets_config();
 
     let (send, recv) = common::get_send_recv();
-    let lb = gruglb::lb::new(test_config.clone());
+    let lb = LB::new(test_config.clone());
     let token = CancellationToken::new();
     lb.run(send, recv, token.child_token()).await.unwrap();
 

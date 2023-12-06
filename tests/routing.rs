@@ -1,4 +1,5 @@
 use assert_cmd::prelude::*;
+use gruglb::lb::LB;
 use std::collections::HashSet;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -37,7 +38,7 @@ async fn route_to_healthy_targets() {
     let test_config = common::test_http_config();
 
     let (send, recv) = common::get_send_recv();
-    let lb = gruglb::lb::new(test_config.clone());
+    let lb = LB::new(test_config.clone());
     let token = CancellationToken::new();
     lb.run(send, recv, token.child_token()).await.unwrap();
 

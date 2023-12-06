@@ -1,6 +1,10 @@
 # The interval, in seconds, to conduct HTTP/TCP health checks.
 health_check_interval: 2
 
+# Run a graceful shutdown period of 30 seconds to terminate separate worker threads.
+# Defaults to true.
+graceful_shutdown: true
+
 # Log level information, defaults to 'info'
 logging: info
 

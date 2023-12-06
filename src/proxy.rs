@@ -17,18 +17,68 @@ use tracing::{error, info};
 /// makes it possible.
 #[async_trait]
 pub trait Proxy {
-    /// Accepting a particular type of connection for configured listeners and targets.
-    ///
-    /// This is limited to TCP-oriented connections, e.g. TCP and HTTP.
-    async fn accept(
-        listeners: Vec<(String, TcpListener)>,
-        current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
-        cancel: CancellationToken,
-    ) -> Result<()>;
-
     /// Proxy a `TcpStream` from an incoming connection to configured targets, with accompanying
     /// `Connection` related data.
-    async fn proxy(mut connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()>;
+    async fn proxy(
+        &'static self,
+        mut connection: Connection,
+        routing_idx: Arc<RwLock<usize>>,
+    ) -> Result<()>;
+
+    /// Retrieve the type of protocol in use by the current proxy.
+    fn protocol_type(&self) -> Protocol;
+}
+
+/// Accepting a particular type of connection for configured listeners and targets.
+///
+/// This is limited to TCP-oriented connections, e.g. TCP and HTTP.
+pub async fn accept<P>(
+    proxy: &'static P,
+    listeners: Vec<(String, TcpListener)>,
+    current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+    cancel: CancellationToken,
+) -> Result<()>
+where
+    P: Proxy + Send + Sync,
+{
+    let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
+    for (name, listener) in listeners {
+        let idx = idx.clone();
+        let client = Arc::new(reqwest::Client::new());
+        let current_healthy_targets = current_healthy_targets.clone();
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            while let Ok((mut stream, address)) = listener.accept().await {
+                if cancel.is_cancelled() {
+                    info!(
+                        "[CANCEL] Received cancel, no longer receiving any {} requests.",
+                        proxy.protocol_type()
+                    );
+                    stream.shutdown().await.unwrap();
+                    break;
+                }
+                let name = name.clone();
+                let idx = Arc::clone(&idx);
+                let current_healthy_targets = Arc::clone(&current_healthy_targets);
+                info!(
+                    "[{}] Incoming request from {address}",
+                    proxy.protocol_type()
+                );
+                let client = client.clone();
+                tokio::spawn(async move {
+                    // debug!("{method} request at {path}");
+                    let connection = Connection {
+                        client: Some(client),
+                        targets: current_healthy_targets,
+                        target_name: name,
+                        stream,
+                    };
+                    proxy.proxy(connection, idx).await.unwrap();
+                });
+            }
+        });
+    }
+    Ok(())
 }
 
 /// Contains useful contextual information about a conducted health check.
@@ -47,14 +97,13 @@ pub struct Connection {
 
     /// An optional HTTP client used to make requests.
     pub client: Option<Arc<reqwest::Client>>,
+    // An optional HTTP `method` for the connection, for example `GET`.
+    // This is only used for HTTP connections.
+    // pub method: Option<String>,
 
-    /// An optional HTTP `method` for the connection, for example `GET`.
-    /// This is only used for HTTP connections.
-    pub method: Option<String>,
-
-    /// An optional `request_path` for the connection, for example `/api/v1/users`.
-    /// This is only used for HTTP connections.
-    pub request_path: Option<String>,
+    // An optional `request_path` for the connection, for example `/api/v1/users`.
+    // This is only used for HTTP connections.
+    // pub request_path: Option<String>,
 }
 
 /// The resulting health check can either be a `Success` or `Failure` mode,
@@ -95,7 +144,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                 match health_client.get(request_addr).send().await {
                                     Ok(_response) => {
                                         info!("{request_addr} is healthy backend for {}", name);
-                                        info!("[HTTP] Sending success to channel");
+                                        info!("[HTTP] Pushing success");
 
                                         results.push(Health::Success(State {
                                             target_name: name.clone(),
@@ -108,7 +157,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                             target_name: name.clone(),
                                             backend: backend.clone(),
                                         }));
-                                        info!("[HTTP] Sending failure to channel");
+                                        info!("[HTTP] Pushing failure");
                                     }
                                 }
                             }
@@ -122,8 +171,9 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                 let request_addr = &format!("{}:{}", backend.host, backend.port);
 
                                 if let Ok(mut stream) = TcpStream::connect(request_addr).await {
-                                    info!("{request_addr} is healthy backend for {}", name);
                                     stream.shutdown().await.unwrap();
+                                    info!("{request_addr} is healthy backend for {}", name);
+                                    info!("[TCP] Pushing success");
                                     results.push(Health::Success(State {
                                         target_name: name.clone(),
                                         backend: backend.clone(),
@@ -132,6 +182,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                                     info!(
                                         "({name}, {request_addr}) is unhealthy, removing from pool"
                                     );
+                                    info!("[TCP] Pushing failure");
                                     results.push(Health::Failure(State {
                                         target_name: name.clone(),
                                         backend: backend.clone(),
@@ -147,6 +198,7 @@ pub async fn health(conf: Arc<Config>, sender: SendTargets) {
                     }
                 }
             }
+            info!("Sending targets to channel");
             sender.send(results).await.unwrap();
         }
     } else {

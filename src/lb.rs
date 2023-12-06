@@ -1,16 +1,18 @@
 use crate::config::Protocol;
 use crate::config::{Backend, Config};
 use crate::http::HttpProxy;
-use crate::proxy::{self, Health, Proxy};
+use crate::proxy::{self, Health};
 use crate::tcp::TcpProxy;
 use anyhow::Result;
 use dashmap::DashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub type SendTargets = Sender<Vec<Health>>;
@@ -35,19 +37,18 @@ impl Drop for LB {
     }
 }
 
-/// Construct a new instance of gruglb
-pub fn new(conf: Config) -> LB {
-    let _ = FmtSubscriber::builder()
-        .with_max_level(conf.log_level())
-        .try_init();
-
-    LB {
-        conf: Arc::new(conf),
-        current_healthy_targets: Arc::new(DashMap::new()),
-    }
-}
-
 impl LB {
+    /// Construct a new instance of gruglb
+    pub fn new(conf: Config) -> LB {
+        let _ = FmtSubscriber::builder()
+            .with_max_level(conf.log_level())
+            .try_init();
+
+        LB {
+            conf: Arc::new(conf),
+            current_healthy_targets: Arc::new(DashMap::new()),
+        }
+    }
     /// Run the application.
     pub async fn run(
         &self,
@@ -70,16 +71,30 @@ impl LB {
         // Continually receive from the channel and update our healthy backend state.
         let health_recv_token = cancel_token.clone();
         task::spawn(async move {
-            while let Some(results) = receiver.recv().await {
-                if health_recv_token.is_cancelled() {
-                    info!("[CANCEL] Running final health check operation");
-                    receiver.close();
-                    while let Some(final_results) = receiver.recv().await {
-                        LB::handle_health_results(final_results, healthy_targets.clone());
+            loop {
+                match receiver.try_recv() {
+                    Ok(results) => {
+                        if health_recv_token.is_cancelled() {
+                            info!("[CANCEL] Running final health check operation");
+                            receiver.close();
+                            while let Some(final_results) = receiver.recv().await {
+                                LB::handle_health_results(final_results, healthy_targets.clone());
+                            }
+                            return;
+                        }
+                        LB::handle_health_results(results, healthy_targets.clone());
                     }
-                    break;
+                    Err(TryRecvError::Empty) => {
+                        debug!("Empty, can receive!");
+                        // Pause for a static time to avoid overloading the Empty branch
+                        // when no messages have been sent, such as in a lengthy health
+                        // check duration.
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        error!("Tried to read from channel after cancel was received from sender!")
+                    }
                 }
-                LB::handle_health_results(results, healthy_targets.clone());
             }
         });
 
@@ -104,23 +119,31 @@ impl LB {
             )
             .await?;
 
-        info!("Starting TCP!");
-        let tcp_cancel_token = cancel_token.clone();
-        TcpProxy::accept(
-            tcp_listeners,
-            Arc::clone(&self.current_healthy_targets),
-            tcp_cancel_token,
-        )
-        .await?;
+        if self.conf.requires_proxy_type(Protocol::Tcp) {
+            info!("Starting TCP!");
+            let tcp_cancel_token = cancel_token.clone();
+            let tcp = TcpProxy::new();
+            proxy::accept(
+                tcp,
+                tcp_listeners,
+                Arc::clone(&self.current_healthy_targets),
+                tcp_cancel_token,
+            )
+            .await?;
+        }
 
-        info!("Starting HTTP!");
-        let http_cancel_token = cancel_token.clone();
-        HttpProxy::accept(
-            http_listeners,
-            Arc::clone(&self.current_healthy_targets),
-            http_cancel_token,
-        )
-        .await?;
+        if self.conf.requires_proxy_type(Protocol::Http) {
+            info!("Starting HTTP!");
+            let http_cancel_token = cancel_token.clone();
+            let http = HttpProxy::new();
+            proxy::accept(
+                http,
+                http_listeners,
+                Arc::clone(&self.current_healthy_targets),
+                http_cancel_token,
+            )
+            .await?;
+        }
 
         Ok(())
     }
