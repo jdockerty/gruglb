@@ -21,6 +21,12 @@ Once installed, pass a YAML config file using the `--config` flag, for example
 gruglb --config path/to/config.yml
 ```
 
+## Features
+
+- Round-robin load balancing of HTTP/TCP connections.
+- Health checks for HTTP/TCP targets.
+- Graceful termination.
+
 ## How does it work?
 
 Given a number of pre-defined targets which contains various backend servers, `gruglb` will route traffic between them in round-robin fashion.
@@ -98,12 +104,6 @@ Hello from fake-2
 Hello from fake-1
 Hello from fake-2
 ```
-
-## Features
-
-- Round-robin load balancing of HTTP/TCP connections.
-- Health checks for HTTP/TCP targets.
-- Graceful termination.
 
 ## Performance
 
