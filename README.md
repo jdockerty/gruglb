@@ -107,8 +107,8 @@ Hello from fake-2
 
 ## Performance
 
-_Note: this is not very scientific and was simply ran on my computer (Intel i7-8700 (12) @ 4.600GHz) as an experiment to see comparative performance between my implementation
-and something that I know is very good. In this case, that is `nginx`._
+_These tests are not very scientific and were simply ran as small experiments to see comparative performance between my implementation
+and something that I know is very good._
 
 Using [`bombardier`](https://github.com/codesenberg/bombardier/) as the tool of choice.
 
@@ -117,6 +117,9 @@ Using [`bombardier`](https://github.com/codesenberg/bombardier/) as the tool of 
 <details>
 
  <summary> Running on localhost </summary>
+
+_CPU: Intel i7-8700 (12) @ 4.600GHz_
+
 
 Using two [`simplebenchserver`](https://pkg.go.dev/github.com/codesenberg/bombardier@v1.2.6/cmd/utils/simplebenchserver) servers as backends for a HTTP target:
 
