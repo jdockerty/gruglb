@@ -21,6 +21,12 @@ Once installed, pass a YAML config file using the `--config` flag, for example
 gruglb --config path/to/config.yml
 ```
 
+## Features
+
+- Round-robin load balancing of HTTP/TCP connections.
+- Health checks for HTTP/TCP targets.
+- Graceful termination.
+
 ## How does it work?
 
 Given a number of pre-defined targets which contains various backend servers, `gruglb` will route traffic between them in round-robin fashion.
@@ -99,20 +105,21 @@ Hello from fake-1
 Hello from fake-2
 ```
 
-## Features
-
-- Round-robin load balancing of HTTP/TCP connections.
-- Health checks for HTTP/TCP targets.
-- Graceful termination.
-
 ## Performance
 
-_Note: this is not very scientific and was simply ran on my computer (Intel i7-8700 (12) @ 4.600GHz) as an experiment to see comparative performance between my implementation
-and something that I know is very good. In this case, that is `nginx`._
+_These tests are not very scientific and were simply ran as small experiments to see comparative performance between my implementation
+and something that I know is very good._
 
 Using [`bombardier`](https://github.com/codesenberg/bombardier/) as the tool of choice.
 
 ### gruglb
+
+<details>
+
+ <summary> Running on localhost </summary>
+
+_CPU: Intel i7-8700 (12) @ 4.600GHz_
+
 
 Using two [`simplebenchserver`](https://pkg.go.dev/github.com/codesenberg/bombardier@v1.2.6/cmd/utils/simplebenchserver) servers as backends for a HTTP target:
 
@@ -135,8 +142,68 @@ Statistics        Avg      Stdev        Max
     others - 0
   Throughput:    48.42MB/s
 ```
+</details>
+
+<details>
+
+ <summary> Running on AWS with m5.xlarge nodes </summary>
+
+This test was performed with 4 nodes: 1 for the load balancer, 2 backend servers running a slightly modified version of `simplebenchserver` which allows binding to `0.0.0.0`, and 1 node used to send traffic internally to the load balancer.
+
+```
+bombardier http://172.31.22.113:8080 --latencies --fasthttp -H "Connection: close"
+Bombarding http://172.31.22.113:8080 for 10s using 125 connection(s)
+[======================================================================================================================================================] 10s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec     16949.53    9201.05   29354.53
+  Latency        7.37ms     6.62ms   103.98ms
+  Latency Distribution
+     50%     4.99ms
+     75%     6.14ms
+     90%    14.03ms
+     95%    22.23ms
+     99%    42.41ms
+  HTTP codes:
+    1xx - 0, 2xx - 169571, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:    20.14MB/s
+```
+
+</details>
+
 
 ### nginx
+
+<details>
+
+<summary> Configuration </summary>
+
+```
+events {
+    worker_connections 1024;
+}
+
+http {
+    server {
+        listen 8080;
+        location / {
+            proxy_pass http://backend;
+        }
+    }
+    upstream backend {
+        server 172.31.21.226:8091;
+        server 172.31.27.167:8092;
+    }
+}
+```
+
+
+</details>
+
+<details>
+
+ <summary> Running on localhost </summary>
 
 Using the same two backend servers and a single worker process for `nginx`
 
@@ -163,3 +230,35 @@ Statistics        Avg      Stdev        Max
 Something to note is that `gruglb` does not have the concept of `worker_processes` like `nginx` does.
 
 This was ran with the default of a single process, it performs even better with multiple (~85k req/s).
+
+</details>
+
+<details>
+
+ <summary> Running on AWS with m5.xlarge nodes </summary>
+
+This test was performed with 4 nodes: 1 for the load balancer, 2 backend servers running a slightly modified version of `simplebenchserver` which allows binding to `0.0.0.0`, and 1 node used to send traffic internally to the load balancer.
+
+Again, using the default of `worker_processes 1;`
+
+```
+bombardier http://172.31.22.113:8080 --latencies --fasthttp -H "Connection: close"
+Bombarding http://172.31.22.113:8080 for 10s using 125 connection(s)
+[======================================================================================================================================================] 10s
+Done!
+Statistics        Avg      Stdev        Max
+  Reqs/sec      8207.42    2301.56   11692.24
+  Latency       15.22ms     6.57ms   100.47ms
+  Latency Distribution
+     50%    14.71ms
+     75%    15.88ms
+     90%    18.67ms
+     95%    25.69ms
+     99%    49.37ms
+  HTTP codes:
+    1xx - 0, 2xx - 82117, 3xx - 0, 4xx - 0, 5xx - 0
+    others - 0
+  Throughput:     9.93MB/s
+```
+
+</details>
