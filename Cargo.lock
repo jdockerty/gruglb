@@ -436,6 +436,7 @@ dependencies = [
  "clap",
  "dashmap",
  "log",
+ "native-tls",
  "once_cell",
  "predicates",
  "rand",

@@ -1,0 +1,19 @@
+health_check_interval: 5
+graceful_shutdown: false
+targets:
+  tlsTermination:
+    protocol: 'https'
+    listener: 4443
+    # TLS is terminated at the load balancer.
+    # Clients are required to trust the certificate that is loaded here. This will
+    # typically originate from a trusted CA.
+    tls:
+      cert_file: 'tests/fixtures/tls/fake.crt'
+      cert_key: 'tests/fixtures/tls/fake.key'
+    backends:
+      - host: "127.0.0.1"
+        port: 8092
+        health_path: "/health"
+      - host: "127.0.0.1"
+        port: 8093
+        health_path: "/health"
