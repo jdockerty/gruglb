@@ -1,6 +1,7 @@
 pub mod config;
 pub mod fakebackend;
 pub mod http;
+pub mod https;
 pub mod lb;
 pub mod proxy;
 pub mod tcp;

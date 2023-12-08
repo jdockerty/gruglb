@@ -1,5 +1,5 @@
-use crate::config::Protocol;
 use crate::config::{Backend, Config};
+use crate::config::{Protocol, TLSConfig};
 use crate::http::HttpProxy;
 use crate::proxy::{self, Health};
 use crate::tcp::TcpProxy;
@@ -23,6 +23,14 @@ pub type RecvTargets = Receiver<Vec<Health>>;
 pub struct LB {
     pub conf: Arc<Config>,
     pub current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
+}
+
+/// Helper to encompass general listener information.
+#[derive(Debug)]
+pub struct ListenerConfig {
+    pub target_name: String,
+    pub listener: TcpListener,
+    pub tls: Option<TLSConfig>,
 }
 
 impl Drop for LB {
@@ -98,28 +106,20 @@ impl LB {
             }
         });
 
-        let tcp_listeners = self
-            .generate_listeners(
-                self.conf
-                    .address
-                    .clone()
-                    .unwrap_or_else(|| "127.0.0.1".to_string()),
-                self.conf.targets.clone().unwrap(),
-                Protocol::Tcp,
-            )
-            .await?;
-        let http_listeners = self
-            .generate_listeners(
-                self.conf
-                    .address
-                    .clone()
-                    .unwrap_or_else(|| "127.0.0.1".to_string()),
-                self.conf.targets.clone().unwrap(),
-                Protocol::Http,
-            )
-            .await?;
+        let bind_address = self
+            .conf
+            .address
+            .clone()
+            .unwrap_or_else(|| "127.0.0.1".to_string());
 
         if self.conf.requires_proxy_type(Protocol::Tcp) {
+            let tcp_listeners = self
+                .generate_listeners(
+                    &bind_address,
+                    self.conf.targets.clone().unwrap(),
+                    Protocol::Tcp,
+                )
+                .await?;
             info!("Starting TCP!");
             let tcp_cancel_token = cancel_token.clone();
             let tcp = TcpProxy::new();
@@ -133,12 +133,39 @@ impl LB {
         }
 
         if self.conf.requires_proxy_type(Protocol::Http) {
+            let http_listeners = self
+                .generate_listeners(
+                    &bind_address,
+                    self.conf.targets.clone().unwrap(),
+                    Protocol::Http,
+                )
+                .await?;
             info!("Starting HTTP!");
             let http_cancel_token = cancel_token.clone();
             let http = HttpProxy::new();
             proxy::accept(
                 http,
                 http_listeners,
+                Arc::clone(&self.current_healthy_targets),
+                http_cancel_token,
+            )
+            .await?;
+        }
+
+        if self.conf.requires_proxy_type(Protocol::Https) {
+            let https_listeners = self
+                .generate_listeners(
+                    &bind_address,
+                    self.conf.targets.clone().unwrap(),
+                    Protocol::Https,
+                )
+                .await?;
+            info!("Starting HTTPS!");
+            let http_cancel_token = cancel_token.clone();
+            let http = HttpProxy::new();
+            proxy::accept(
+                http,
+                https_listeners,
                 Arc::clone(&self.current_healthy_targets),
                 http_cancel_token,
             )
@@ -201,10 +228,10 @@ impl LB {
     /// Currently only `Protocol::Tcp` and `Protocol::Http` are supported.
     async fn generate_listeners(
         &self,
-        bind_address: String,
+        bind_address: &String,
         targets: std::collections::HashMap<String, crate::config::Target>,
         protocol_type: Protocol,
-    ) -> Result<Vec<(String, TcpListener)>> {
+    ) -> Result<Vec<ListenerConfig>> {
         let mut bindings = vec![];
 
         for (name, target) in targets {
@@ -212,7 +239,18 @@ impl LB {
                 let addr = format!("{}:{}", bind_address.clone(), target.listener.unwrap());
                 let listener = TcpListener::bind(&addr).await?;
                 info!("Binding to {} for {}", &addr, &name);
-                bindings.push((name, listener));
+
+                let tls = if protocol_type == Protocol::Https {
+                    Some(target.tls.unwrap())
+                } else {
+                    None
+                };
+                let conf = ListenerConfig {
+                    target_name: name,
+                    listener,
+                    tls,
+                };
+                bindings.push(conf);
             }
         }
 
