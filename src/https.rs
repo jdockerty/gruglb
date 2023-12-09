@@ -99,7 +99,6 @@ impl Proxy for HttpsProxy {
 
                     let method = http_info[0].clone();
                     let request_path = http_info[1].clone();
-                    println!("{http_request:?}");
 
                     // Limit the scope of the index write lock.
                     let http_backend: String;

@@ -12,8 +12,8 @@ targets:
       cert_key: 'tests/fixtures/tls/fake.key'
     backends:
       - host: "127.0.0.1"
-        port: 8092
+        port: 8091
         health_path: "/health"
       - host: "127.0.0.1"
-        port: 8093
+        port: 8092
         health_path: "/health"
