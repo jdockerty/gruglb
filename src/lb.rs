@@ -1,16 +1,24 @@
 use crate::config::{Backend, Config};
-use crate::config::{Protocol, TLSConfig};
+use crate::config::Protocol;
 use crate::http::HttpProxy;
+use crate::https::HttpsProxy;
 use crate::proxy::{self, Health};
 use crate::tcp::TcpProxy;
+use anyhow::Context;
 use anyhow::Result;
 use dashmap::DashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task;
+use tokio_native_tls::{
+    native_tls::{Identity, TlsAcceptor as SyncTlsAcceptor},
+    TlsAcceptor,
+};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 use tracing_subscriber::FmtSubscriber;
@@ -26,11 +34,10 @@ pub struct LB {
 }
 
 /// Helper to encompass general listener information.
-#[derive(Debug)]
 pub struct ListenerConfig {
     pub target_name: String,
     pub listener: TcpListener,
-    pub tls: Option<TLSConfig>,
+    pub tls: Option<TlsAcceptor>,
 }
 
 impl Drop for LB {
@@ -162,9 +169,9 @@ impl LB {
                 .await?;
             info!("Starting HTTPS!");
             let http_cancel_token = cancel_token.clone();
-            let http = HttpProxy::new();
+            let https = HttpsProxy::new();
             proxy::accept(
-                http,
+                https,
                 https_listeners,
                 Arc::clone(&self.current_healthy_targets),
                 http_cancel_token,
@@ -228,7 +235,7 @@ impl LB {
     /// Currently only `Protocol::Tcp` and `Protocol::Http` are supported.
     async fn generate_listeners(
         &self,
-        bind_address: &String,
+        bind_address: &str,
         targets: std::collections::HashMap<String, crate::config::Target>,
         protocol_type: Protocol,
     ) -> Result<Vec<ListenerConfig>> {
@@ -236,15 +243,43 @@ impl LB {
 
         for (name, target) in targets {
             if target.protocol_type() == protocol_type {
-                let addr = format!("{}:{}", bind_address.clone(), target.listener.unwrap());
+                let addr = format!("{}:{}", bind_address.to_owned(), target.listener.unwrap());
                 let listener = TcpListener::bind(&addr).await?;
                 info!("Binding to {} for {}", &addr, &name);
 
                 let tls = if protocol_type == Protocol::Https {
-                    Some(target.tls.unwrap())
+                    // This is a HTTPS target, so it should have a TLSConfig.
+                    let target_tls = target.clone().tls.unwrap();
+                    let mut pem = vec![];
+                    let mut key = vec![];
+
+                    let mut cert_file = File::open(target_tls.cert_file.clone())
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "unable to open certificate file: {}",
+                                target_tls.clone().cert_file.display()
+                            )
+                        })?;
+                    let mut key_file =
+                        File::open(target_tls.cert_key.clone())
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "unable to open key file: {}",
+                                    target_tls.clone().cert_key.display()
+                                )
+                            })?;
+                    cert_file.read_to_end(&mut pem).await?;
+                    key_file.read_to_end(&mut key).await?;
+                    let native_acceptor = SyncTlsAcceptor::new(Identity::from_pkcs8(&pem, &key)?)?;
+                    let acceptor = TlsAcceptor::from(native_acceptor);
+
+                    Some(acceptor)
                 } else {
                     None
                 };
+
                 let conf = ListenerConfig {
                     target_name: name,
                     listener,
