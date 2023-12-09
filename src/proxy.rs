@@ -1,15 +1,14 @@
-use crate::config::{Backend, Config, Protocol, TLSConfig};
+use crate::config::{Backend, Config, Protocol};
 use crate::lb::{ListenerConfig, SendTargets};
-use anyhow::{Context, Result};
+use anyhow:: Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::iter::Iterator;
 use std::{sync::Arc, vec};
-use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use tokio::sync::RwLock;
+use tokio_native_tls::TlsAcceptor;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
@@ -48,25 +47,6 @@ where
         let idx = idx.clone();
 
         let client = Arc::new(reqwest::Client::new());
-        // use native_tls instead of reqwest embed.
-        //let client = match conf.tls {
-        //    Some(tls) => {
-        //        info!("Loading TLS info");
-        //        let mut pem = vec![];
-        //        let mut cert_file = File::open(tls.cert_file.clone()).await.with_context(|| format!("unable to open certificate file: {}", tls.clone().cert_file.display()))?;
-        //        let mut key_file = File::open(tls.cert_key.clone()).await.with_context(|| format!("unable to open key file: {}", tls.clone().cert_key.display()))?;
-        //        cert_file.read_to_end(&mut pem).await?;
-        //        key_file.read_to_end(&mut pem).await?;
-
-        //        let id = Identity::from_pem(&pem)?;
-
-        //        let client = reqwest::ClientBuilder::new()
-        //            .identity(id)
-        //            .build()?;
-        //        Arc::new(client)
-        //    }
-        //    None => Arc::new(reqwest::Client::new()),
-        //};
         let current_healthy_targets = current_healthy_targets.clone();
         let cancel = cancel.clone();
         tokio::spawn(async move {
@@ -79,6 +59,12 @@ where
                     stream.shutdown().await.unwrap();
                     break;
                 }
+
+                let tls = if conf.tls.clone().is_some() {
+                    Some(conf.tls.clone().unwrap())
+                } else {
+                    None
+                };
                 let name = conf.target_name.clone();
                 let idx = Arc::clone(&idx);
                 let current_healthy_targets = Arc::clone(&current_healthy_targets);
@@ -94,6 +80,7 @@ where
                         targets: current_healthy_targets,
                         target_name: name,
                         stream,
+                        tls,
                     };
                     proxy.proxy(connection, idx).await.unwrap();
                 });
@@ -119,13 +106,9 @@ pub struct Connection {
 
     /// An optional HTTP client used to make requests.
     pub client: Option<Arc<reqwest::Client>>,
-    // An optional HTTP `method` for the connection, for example `GET`.
-    // This is only used for HTTP connections.
-    // pub method: Option<String>,
 
-    // An optional `request_path` for the connection, for example `/api/v1/users`.
-    // This is only used for HTTP connections.
-    // pub request_path: Option<String>,
+    /// Optional TLS related information.
+    pub tls: Option<TlsAcceptor>,
 }
 
 /// The resulting health check can either be a `Success` or `Failure` mode,
