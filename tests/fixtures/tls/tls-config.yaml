@@ -3,7 +3,7 @@ graceful_shutdown: false
 targets:
   tlsTermination:
     protocol: 'https'
-    listener: 4443
+    listener: 8443
     # TLS is terminated at the load balancer.
     # Clients are required to trust the certificate that is loaded here. This will
     # typically originate from a trusted CA.
