@@ -1,6 +1,6 @@
 use crate::config::{Backend, Config, Protocol};
 use crate::lb::{ListenerConfig, SendTargets};
-use anyhow:: Result;
+use anyhow::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::iter::Iterator;

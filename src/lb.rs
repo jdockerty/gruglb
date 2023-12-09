@@ -1,5 +1,5 @@
-use crate::config::{Backend, Config};
 use crate::config::Protocol;
+use crate::config::{Backend, Config};
 use crate::http::HttpProxy;
 use crate::https::HttpsProxy;
 use crate::proxy::{self, Health};

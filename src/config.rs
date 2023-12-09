@@ -217,6 +217,7 @@ mod tests {
             protocol: "invalid_protocol".to_string(),
             listener: None,
             backends: None,
+            tls: None,
         };
 
         assert_eq!(http_target.protocol_type(), Protocol::Http);
