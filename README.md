@@ -26,7 +26,7 @@ gruglb --config path/to/config.yml
 - Round-robin load balancing of HTTP/HTTPS/TCP connections.
 - Health checks for HTTP/HTTPS/TCP targets.
 - Graceful termination.
-- TLS termination.
+- TLS via termination, backends are still expected to be accessible over HTTP.
 
 ## How does it work?
 
