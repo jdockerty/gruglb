@@ -40,6 +40,14 @@ pub fn test_http_config() -> config::Config {
     config::new(fake_conf).unwrap()
 }
 
+#[allow(dead_code)]
+pub fn test_https_config() -> config::Config {
+    let fake_conf =
+        File::open("tests/fixtures/tls/config.yaml").expect("unable to open tls config");
+
+    config::new(fake_conf).unwrap()
+}
+
 pub fn get_send_recv() -> (SendTargets, RecvTargets) {
     let (send, recv): (SendTargets, RecvTargets) = channel(1);
     (send, recv)

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use std::{collections::HashMap, fmt::Display, fs::File, time::Duration};
+use std::{collections::HashMap, fmt::Display, fs::File, path::PathBuf, time::Duration};
 use tracing_subscriber::filter::LevelFilter;
 
 /// Protocol to use against a configured target.
@@ -9,6 +9,7 @@ use tracing_subscriber::filter::LevelFilter;
 pub enum Protocol {
     Tcp,
     Http,
+    Https,
     Unsupported,
 }
 
@@ -17,6 +18,7 @@ impl Display for Protocol {
         match self {
             Self::Tcp => write!(f, "TCP"),
             Self::Http => write!(f, "HTTP"),
+            Self::Https => write!(f, "HTTPS"),
             Self::Unsupported => write!(f, "Unsupported"),
         }
     }
@@ -50,15 +52,31 @@ pub struct Config {
 // traffic to configured backend servers.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Target {
-    // Protocol to use for the target's backends.
+    // Protocol to use for the target's backend servers.
     pub protocol: String,
 
-    // Listener to use with TCP.
+    // Listener port to bind for this target.
+    //
+    // Incoming traffic on this port will have traffic routed between the configured
+    // backends server.
     pub listener: Option<u16>,
 
-    /// Backends to route traffic to.
+    /// Backend servers to route traffic to.
     pub backends: Option<Vec<Backend>>,
+
+    /// TLS configuration.
+    ///
+    /// Specifying this means that TLS is terminated at the load balancer for the
+    /// backend servers defined underneath this target.
+    pub tls: Option<TLSConfig>,
+    // TODO:
     // routing_algorithm: RoutingAlgorithm,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TLSConfig {
+    pub cert_file: PathBuf,
+    pub cert_key: PathBuf,
 }
 
 impl Target {
@@ -67,6 +85,7 @@ impl Target {
         match self.protocol.as_str() {
             "tcp" => Protocol::Tcp,
             "http" => Protocol::Http,
+            "https" => Protocol::Https,
             _ => Protocol::Unsupported,
         }
     }
@@ -198,6 +217,7 @@ mod tests {
             protocol: "invalid_protocol".to_string(),
             listener: None,
             backends: None,
+            tls: None,
         };
 
         assert_eq!(http_target.protocol_type(), Protocol::Http);
