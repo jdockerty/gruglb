@@ -4,8 +4,6 @@ use std::collections::HashSet;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
 mod common;

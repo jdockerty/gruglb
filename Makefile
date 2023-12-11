@@ -9,5 +9,6 @@ local_cert_trust:
 	mkcert -install
 	@echo "Ensure you run 'make local_cert_untrust' once you are done testing."
 
+# Untrust localhost from cert store once testing is finished.
 local_cert_untrust:
 	mkcert -uninstall

@@ -23,9 +23,10 @@ gruglb --config path/to/config.yml
 
 ## Features
 
-- Round-robin load balancing of HTTP/TCP connections.
-- Health checks for HTTP/TCP targets.
+- Round-robin load balancing of HTTP/HTTPS/TCP connections.
+- Health checks for HTTP/HTTPS/TCP targets.
 - Graceful termination.
+- TLS termination.
 
 ## How does it work?
 
@@ -129,18 +130,17 @@ Bombarding http://127.0.0.1:8080 for 10s using 125 connection(s)
 [========================================================================================] 10s
 Done!
 Statistics        Avg      Stdev        Max
-  Reqs/sec     40954.38    2857.90   45273.78
-  Latency        3.05ms   485.51us    36.43ms
+  Reqs/sec     42558.30    3130.17   47446.16
+  Latency        2.93ms   427.72us    29.29ms
   Latency Distribution
-     50%     2.97ms
-     75%     3.32ms
-     90%     3.75ms
-     95%     4.13ms
-     99%     5.28ms
+     50%     2.85ms
+     75%     3.17ms
+     90%     3.61ms
+     95%     4.01ms
+     99%     5.22ms
   HTTP codes:
-    1xx - 0, 2xx - 408841, 3xx - 0, 4xx - 0, 5xx - 0
+    1xx - 0, 2xx - 425267, 3xx - 0, 4xx - 0, 5xx - 0
     others - 0
-  Throughput:    48.42MB/s
 ```
 </details>
 
