@@ -8,8 +8,8 @@ targets:
     # Clients are required to trust the certificate that is loaded here. This will
     # typically originate from a trusted CA.
     tls:
-      cert_file: 'tests/fixtures/tls/fake.crt'
-      cert_key: 'tests/fixtures/tls/fake.key'
+      cert_file: 'tests/fixtures/tls/server.pem'
+      cert_key: 'tests/fixtures/tls/server.key'
     backends:
       - host: "127.0.0.1"
         port: 8091

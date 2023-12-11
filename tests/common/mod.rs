@@ -43,7 +43,7 @@ pub fn test_http_config() -> config::Config {
 #[allow(dead_code)]
 pub fn test_https_config() -> config::Config {
     let fake_conf =
-        File::open("tests/fixtures/tls/tls-config.yaml").expect("unable to open tls config");
+        File::open("tests/fixtures/tls/config.yaml").expect("unable to open tls config");
 
     config::new(fake_conf).unwrap()
 }

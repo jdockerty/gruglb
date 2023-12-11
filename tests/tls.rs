@@ -1,6 +1,5 @@
 use assert_cmd::prelude::*;
 use gruglb::lb::LB;
-use reqwest::Certificate;
 use std::collections::HashSet;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -51,14 +50,6 @@ async fn route_tls_target() {
     let wait_duration = test_config.health_check_interval() * 3;
     tokio::time::sleep(wait_duration).await;
 
-    // Send some requests and ensure we see the expected responses back.
-    let mut cert_file = File::open("tests/fixtures/tls/fake.crt")
-        .await
-        .expect("unable to read fake certificate");
-
-    let mut buf = vec![];
-    cert_file.read_to_end(&mut buf).await.unwrap();
-    // let cert = Certificate::from_pem(&buf).unwrap();
     let https_client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
