@@ -56,7 +56,7 @@ async fn route_tls_target() {
 
     for _ in 0..=4 {
         let response = https_client
-            .get("https://localhost:8443")
+            .get("https://127.0.0.1:8443")
             .send()
             .await
             .unwrap();

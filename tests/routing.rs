@@ -53,7 +53,7 @@ async fn route_to_healthy_targets() {
 
     for _ in 0..=4 {
         let response = http_client
-            .get("http://localhost:8080")
+            .get("http://127.0.0.1:8080")
             .send()
             .await
             .unwrap();

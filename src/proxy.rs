@@ -4,10 +4,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::iter::Iterator;
+use std::sync::atomic::AtomicUsize;
 use std::{sync::Arc, vec};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::sync::RwLock;
 use tokio_native_tls::TlsAcceptor;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
@@ -20,11 +20,7 @@ use tracing::{error, info};
 pub trait Proxy: Send + Sync + Copy + 'static {
     /// Proxy a `TcpStream` from an incoming connection to configured targets, with accompanying
     /// `Connection` related data.
-    async fn proxy(
-        &self,
-        mut connection: Connection,
-        routing_idx: Arc<RwLock<usize>>,
-    ) -> Result<()>;
+    async fn proxy(&self, mut connection: Connection, routing_idx: Arc<AtomicUsize>) -> Result<()>;
 
     /// Retrieve the type of protocol in use by the current proxy.
     fn protocol_type(&self) -> Protocol;
@@ -42,7 +38,7 @@ pub async fn accept<P>(
 where
     P: Proxy,
 {
-    let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
+    let idx: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
     for conf in listeners {
         let idx = idx.clone();
 
