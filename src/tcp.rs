@@ -13,16 +13,22 @@ use tracing::info;
 
 /// `TcpProxy` is used as a concrete implementation of the `Proxy` trait for TCP
 /// connection proxying to configured targets.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TcpProxy {}
+
+impl Default for TcpProxy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl TcpProxy {
     /// Return a new instance of `TcpProxy`.
     ///
     /// `TcpProxy` has a static lifetime as it exists the entire duration of the
     /// application's active lifecycle.
-    pub fn new() -> &'static TcpProxy {
-        &Self {}
+    pub fn new() -> TcpProxy {
+        Self {}
     }
 }
 
@@ -34,7 +40,7 @@ impl Proxy for TcpProxy {
 
     /// Handles the proxying of TCP connections to configured targets.
     async fn proxy(
-        &'static self,
+        &self,
         mut connection: Connection,
         routing_idx: Arc<RwLock<usize>>,
     ) -> Result<()> {
