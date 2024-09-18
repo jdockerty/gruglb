@@ -17,11 +17,11 @@ use tracing::{error, info};
 /// Traits cannot have `async` functions as part of stable Rust, but this proc-macro
 /// makes it possible.
 #[async_trait]
-pub trait Proxy {
+pub trait Proxy: Send + Send + Copy + 'static {
     /// Proxy a `TcpStream` from an incoming connection to configured targets, with accompanying
     /// `Connection` related data.
     async fn proxy(
-        &'static self,
+        &self,
         mut connection: Connection,
         routing_idx: Arc<RwLock<usize>>,
     ) -> Result<()>;
@@ -34,13 +34,13 @@ pub trait Proxy {
 ///
 /// This is limited to TCP-oriented connections, e.g. TCP and HTTP(S).
 pub async fn accept<P>(
-    proxy: &'static P,
+    proxy: P,
     listeners: Vec<ListenerConfig>,
     current_healthy_targets: Arc<DashMap<String, Vec<Backend>>>,
     cancel: CancellationToken,
 ) -> Result<()>
 where
-    P: Proxy + Send + Sync,
+    P: Proxy,
 {
     let idx: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
     for conf in listeners {
@@ -74,7 +74,6 @@ where
                 );
                 let client = client.clone();
                 tokio::spawn(async move {
-                    // debug!("{method} request at {path}");
                     let connection = Connection {
                         client: Some(client),
                         targets: current_healthy_targets,

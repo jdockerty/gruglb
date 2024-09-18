@@ -15,16 +15,22 @@ use tracing::info;
 
 /// `HttpProxy` is used as a concrete implementation of the `Proxy` trait for HTTP
 /// connection proxying to configured targets.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct HttpProxy {}
+
+impl Default for HttpProxy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl HttpProxy {
     /// Return a new instance of `HttpProxy`.
     ///
     /// `HttpProxy` has a static lifetime as it exists the entire duration of the
     /// application's active lifecycle.
-    pub fn new() -> &'static HttpProxy {
-        &Self {}
+    pub fn new() -> HttpProxy {
+        Self {}
     }
 
     // TODO: Pass connection here for specific HTTP requirement for request_path and method,
@@ -61,7 +67,7 @@ impl Proxy for HttpProxy {
 
     /// Handles the proxying of HTTP connections to configured targets.
     async fn proxy(
-        &'static self,
+        &self,
         mut connection: Connection,
         routing_idx: Arc<RwLock<usize>>,
     ) -> Result<()> {
