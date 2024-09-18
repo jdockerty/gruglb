@@ -17,7 +17,7 @@ use tracing::{error, info};
 /// Traits cannot have `async` functions as part of stable Rust, but this proc-macro
 /// makes it possible.
 #[async_trait]
-pub trait Proxy: Send + Send + Copy + 'static {
+pub trait Proxy: Send + Sync + Copy + 'static {
     /// Proxy a `TcpStream` from an incoming connection to configured targets, with accompanying
     /// `Connection` related data.
     async fn proxy(
