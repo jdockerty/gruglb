@@ -103,11 +103,15 @@ impl Proxy for HttpsProxy {
                     let method = http_info[0].clone();
                     let request_path = http_info[1].clone();
 
+                    // Reset index when out of bounds to route back to the first server.
+                    if routing_idx.load(Ordering::Acquire) >= backend_count {
+                        routing_idx.store(0, Ordering::Relaxed);
+                    }
+
+                    let backend_idx = routing_idx.load(Ordering::Relaxed);
                     let https_backend = format!(
                         "https://{}:{}{}",
-                        backends[routing_idx.load(Ordering::Acquire)].host,
-                        backends[routing_idx.load(Ordering::Relaxed)].port,
-                        request_path
+                        backends[backend_idx].host, backends[backend_idx].port, request_path
                     );
 
                     debug!(
@@ -116,11 +120,6 @@ impl Proxy for HttpsProxy {
                         &connection.target_name,
                         routing_idx.load(Ordering::Relaxed),
                     );
-
-                    // Reset index when out of bounds to route back to the first server.
-                    if routing_idx.load(Ordering::Relaxed) >= backend_count {
-                        routing_idx.store(0, Ordering::Relaxed);
-                    }
 
                     // Increment a shared index after we've constructed our current connection
                     // address.

@@ -52,21 +52,21 @@ impl Proxy for TcpProxy {
             }
             debug!("Backends configured {:?}", &backends);
 
+            // Reset index when out of bounds to route back to the first server.
+            if routing_idx.load(Ordering::Acquire) >= backend_count {
+                routing_idx.store(0, Ordering::Relaxed);
+            }
+
+            let backend_idx = routing_idx.load(Ordering::Relaxed);
             let backend_addr = format!(
                 "{}:{}",
-                backends[routing_idx.load(Ordering::Acquire)].host,
-                backends[routing_idx.load(Ordering::Relaxed)].port
+                backends[backend_idx].host, backends[backend_idx].port
             );
             debug!(
                 "[TCP] {backend_count} backends configured for {}, current index {}",
                 &connection.target_name,
                 routing_idx.load(Ordering::Relaxed),
             );
-
-            // Reset index when out of bounds to route back to the first server.
-            if routing_idx.load(Ordering::Relaxed) >= backend_count {
-                routing_idx.store(0, Ordering::Relaxed);
-            }
 
             // Increment a shared index after we've constructed our current connection
             // address.
