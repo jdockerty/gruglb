@@ -102,7 +102,7 @@ impl Proxy for HttpProxy {
 
             let http_backend = format!(
                 "http://{}:{}{}",
-                backends[routing_idx.load(Ordering::Relaxed)].host,
+                backends[routing_idx.load(Ordering::Acquire)].host,
                 backends[routing_idx.load(Ordering::Relaxed)].port,
                 request_path
             );
@@ -111,7 +111,7 @@ impl Proxy for HttpProxy {
                 "[{}] {backend_count} backends configured for {}, current index {}",
                 self.protocol_type(),
                 &connection.target_name,
-                routing_idx.load(Ordering::Acquire),
+                routing_idx.load(Ordering::Relaxed),
             );
 
             // Reset index when out of bounds to route back to the first server.

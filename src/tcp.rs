@@ -54,13 +54,13 @@ impl Proxy for TcpProxy {
 
             let backend_addr = format!(
                 "{}:{}",
-                backends[routing_idx.load(Ordering::Relaxed)].host,
+                backends[routing_idx.load(Ordering::Acquire)].host,
                 backends[routing_idx.load(Ordering::Relaxed)].port
             );
             debug!(
                 "[TCP] {backend_count} backends configured for {}, current index {}",
                 &connection.target_name,
-                routing_idx.load(Ordering::Acquire),
+                routing_idx.load(Ordering::Relaxed),
             );
 
             // Reset index when out of bounds to route back to the first server.
