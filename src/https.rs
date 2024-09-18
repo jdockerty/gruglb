@@ -4,11 +4,12 @@ use crate::proxy::Proxy;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Response;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
-use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -62,7 +63,7 @@ impl Proxy for HttpsProxy {
     }
 
     /// Handles the proxying of HTTP connections to configured targets.
-    async fn proxy(&self, connection: Connection, routing_idx: Arc<RwLock<usize>>) -> Result<()> {
+    async fn proxy(&self, connection: Connection, routing_idx: Arc<AtomicUsize>) -> Result<()> {
         if let Some(backends) = connection.targets.get(&connection.target_name) {
             let backend_count = backends.len();
             if backend_count == 0 {
@@ -102,36 +103,33 @@ impl Proxy for HttpsProxy {
                     let method = http_info[0].clone();
                     let request_path = http_info[1].clone();
 
-                    // Limit the scope of the index write lock.
-                    let http_backend: String;
-                    {
-                        let mut idx = routing_idx.write().await;
+                    let https_backend = format!(
+                        "https://{}:{}{}",
+                        backends[routing_idx.load(Ordering::Relaxed)].host,
+                        backends[routing_idx.load(Ordering::Relaxed)].port,
+                        request_path
+                    );
 
-                        debug!(
-                            "[{}] {backend_count} backends configured for {}, current index {idx}",
-                            self.protocol_type(),
-                            &connection.target_name
-                        );
+                    debug!(
+                        "[{}] {backend_count} backends configured for {}, current index {}",
+                        self.protocol_type(),
+                        &connection.target_name,
+                        routing_idx.load(Ordering::Acquire),
+                    );
 
-                        // Reset index when out of bounds to route back to the first server.
-                        if *idx >= backend_count {
-                            *idx = 0;
-                        }
-
-                        http_backend = format!(
-                            "http://{}:{}{}",
-                            backends[*idx].host, backends[*idx].port, request_path
-                        );
-
-                        // Increment a shared index after we've constructed our current connection
-                        // address.
-                        *idx += 1;
+                    // Reset index when out of bounds to route back to the first server.
+                    if routing_idx.load(Ordering::Relaxed) >= backend_count {
+                        routing_idx.store(0, Ordering::Relaxed);
                     }
+
+                    // Increment a shared index after we've constructed our current connection
+                    // address.
+                    routing_idx.fetch_add(1, Ordering::Relaxed);
 
                     info!(
                         "[{}] Attempting to connect to {}",
                         self.protocol_type(),
-                        &http_backend
+                        &https_backend
                     );
 
                     match method.as_str() {
@@ -140,11 +138,11 @@ impl Proxy for HttpsProxy {
                                 .client
                                 .as_ref()
                                 .unwrap()
-                                .get(&http_backend)
+                                .get(&https_backend)
                                 .send()
                                 .await
                                 .with_context(|| {
-                                    format!("unable to send response to {http_backend}")
+                                    format!("unable to send response to {https_backend}")
                                 })?;
                             let response = self.construct_response(backend_response).await?;
 
@@ -155,11 +153,11 @@ impl Proxy for HttpsProxy {
                                 .client
                                 .as_ref()
                                 .unwrap()
-                                .post(&http_backend)
+                                .post(&https_backend)
                                 .send()
                                 .await
                                 .with_context(|| {
-                                    format!("unable to send response to {http_backend}")
+                                    format!("unable to send response to {https_backend}")
                                 })?;
                             let response = self.construct_response(backend_response).await?;
 
@@ -172,7 +170,7 @@ impl Proxy for HttpsProxy {
                     info!(
                         "[{}] response sent to {}",
                         self.protocol_type(),
-                        &http_backend
+                        &https_backend
                     );
                 }
                 Err(e) => error!("unable to accept TLS stream: {e}"),
